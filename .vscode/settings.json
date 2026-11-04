@@ -1,0 +1,11 @@
+{
+  "python.defaultInterpreterPath": "C:\\Users\\Sergio Lima\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+  "python.analysis.extraPaths": [
+    "./backend",
+    "./backend/app"
+  ],
+  "python.autoComplete.extraPaths": [
+    "./backend",
+    "./backend/app"
+  ]
+}

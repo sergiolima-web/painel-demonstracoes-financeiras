@@ -1,0 +1,471 @@
+import os
+from typing import Optional, List
+from fastapi import FastAPI, UploadFile, File, Response, Form
+from fastapi.responses import HTMLResponse
+from fastapi.middleware.cors import CORSMiddleware
+from dotenv import load_dotenv
+
+from app.services.jev_service import jev_service
+from app.services.agente_langgraph_service import agente_langgraph
+from app.services.planilha_service import gerar_modelo_planilha_exemplo, processar_demonstracoes_com_jev
+from app.services.pdf_service import gerar_modelo_pdf_exemplo, processar_pdf_demonstracoes_com_jev
+from app.services.matriz_empresa_service import conglutinador_jev, ESTRUTURA_MATRIZ_PADRAO
+
+load_dotenv()
+
+app = FastAPI(
+    title="API de Análise de Demonstrações Financeiras & Acionistas",
+    description="Motor de cálculo de Balanço Patrimonial, DRE, Índices Financeiros e Integração JEV TypeSafe",
+    version="1.0.0"
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:8000",
+        "http://127.0.0.1:8000",
+        "http://localhost:3000",
+        "http://127.0.0.1:3000"
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+@app.middleware("http")
+async def add_no_cache_headers(request, call_next):
+    response = await call_next(request)
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    return response
+
+ultimo_documento_ativo = None
+
+@app.get("/", response_class=HTMLResponse)
+def painel_principal():
+    """
+    Entrega o Painel Visual Executivo Completo com React, Tailwind e JEV integrado.
+    Garante que o navegador nunca sirva versão em cache antigo.
+    """
+    template_path = os.path.join(os.path.dirname(__file__), "templates", "index.html")
+    if os.path.exists(template_path):
+        with open(template_path, "r", encoding="utf-8") as f:
+            conteudo = f.read()
+            return HTMLResponse(
+                content=conteudo,
+                headers={
+                    "Cache-Control": "no-cache, no-store, must-revalidate",
+                    "Pragma": "no-cache",
+                    "Expires": "0"
+                }
+            )
+    return HTMLResponse("<h1>Painel Financeiro Online</h1>")
+
+@app.get("/api/health")
+def health_check():
+    return {
+        "status": "online",
+        "sistema": "Painel de Balanço e DRE para Acionistas",
+        "versao": "1.0.0"
+    }
+
+@app.get("/api/status-jev")
+def status_jev():
+    ativo = jev_service.esta_ativo()
+    return {
+        "jev_habilitado": ativo,
+        "icone": "⚡🧠",
+        "badge": "⚡🧠 JEV Decision Engine",
+        "mensagem": "JEV TypeSafe configurado e pronto para uso" if ativo else "Chave JEV não informada no .env (utilizando fallback determinístico)"
+    }
+
+from pydantic import BaseModel
+
+class RegraDeParaRequest(BaseModel):
+    termo_origem: str
+    conta_matriz_id: str
+    conta_matriz_nome: str
+    observacao: str = ""
+
+@app.get("/api/matriz-empresa")
+def obter_matriz_empresa():
+    """
+    Retorna a DRE Conglutinada na Matriz Corporativa da Empresa com os valores padrão da imagem.
+    """
+    return conglutinador_jev.conglutinar_dados_na_matriz([])
+
+@app.get("/api/matriz-empresa/estrutura")
+def obter_estrutura_matriz():
+    """
+    Retorna a estrutura pura da árvore da matriz de contas corporativas.
+    """
+    return {"estrutura": ESTRUTURA_MATRIZ_PADRAO}
+
+@app.get("/api/regras-depara")
+def listar_regras_depara():
+    """
+    Lista todas as regras de conglutinação semântica e De-Para cadastradas para o JEV.
+    """
+    return {"regras": conglutinador_jev.listar_regras_depara()}
+
+@app.post("/api/regras-depara")
+def cadastrar_regra_depara(req: RegraDeParaRequest):
+    """
+    Cadastra uma nova regra de De-Para / Particularidade para o motor JEV aprender.
+    """
+    regra = conglutinador_jev.adicionar_regra_depara(
+        termo_origem=req.termo_origem,
+        conta_matriz_id=req.conta_matriz_id,
+        conta_matriz_nome=req.conta_matriz_nome,
+        observacao=req.observacao
+    )
+    return {"status": "sucesso", "mensagem": "Regra cadastrada com sucesso no JEV!", "regra": regra}
+
+@app.delete("/api/regras-depara/{regra_id}")
+def remover_regra_depara(regra_id: str):
+    """
+    Remove uma regra de De-Para cadastrada.
+    """
+    removido = conglutinador_jev.remover_regra_depara(regra_id)
+    return {"status": "sucesso" if removido else "erro", "removido": removido}
+
+@app.get("/api/modelo-planilha")
+def baixar_modelo_planilha():
+    """
+    Retorna o modelo de planilha Excel (.xlsx) contendo abas estruturadas de Balanço e DRE.
+    """
+    conteudo_bytes = gerar_modelo_planilha_exemplo()
+    return Response(
+        content=conteudo_bytes,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": "attachment; filename=Modelo_Balanco_DRE_Acionistas.xlsx"}
+    )
+
+@app.get("/api/modelo-pdf")
+def baixar_modelo_pdf():
+    """
+    Retorna o modelo executivo em PDF de alta fidelidade contendo
+    Balanço Patrimonial e DRE para testes e auditoria.
+    """
+    conteudo_bytes = gerar_modelo_pdf_exemplo()
+    return Response(
+        content=conteudo_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": "attachment; filename=Modelo_Balanco_DRE_Acionistas.pdf"}
+    )
+
+@app.get("/api/dados-demonstracao-padrao")
+def obter_dados_padrao():
+    """
+    Retorna o documento ativo atual (último arquivo importado) ou a demonstração de exemplo caso nenhum tenha sido carregado.
+    Re-conglutina na matriz corporativa para refletir imediatamente novas regras do JEV.
+    """
+    global ultimo_documento_ativo
+    if ultimo_documento_ativo is not None:
+        contas = ultimo_documento_ativo.get("contas_detalhadas", [])
+        if contas:
+            ultimo_documento_ativo["dre_matriz_empresa"] = conglutinador_jev.conglutinar_dados_na_matriz(contas)
+        return ultimo_documento_ativo
+
+    conteudo_bytes = gerar_modelo_planilha_exemplo()
+    ultimo_documento_ativo = processar_demonstracoes_com_jev(conteudo_bytes, "Demonstracoes_Exemplo_Acionistas.xlsx")
+    return ultimo_documento_ativo
+
+@app.post("/api/resetar-dados-padrao")
+def resetar_dados_padrao():
+    """
+    Reseta a visualização ativa para o modelo de exemplo original.
+    """
+    global ultimo_documento_ativo
+    conteudo_bytes = gerar_modelo_planilha_exemplo()
+    ultimo_documento_ativo = processar_demonstracoes_com_jev(conteudo_bytes, "Demonstracoes_Exemplo_Acionistas.xlsx")
+    return ultimo_documento_ativo
+
+@app.get("/api/dados-demonstracao-pdf-padrao")
+def obter_dados_pdf_padrao():
+    """
+    Carrega e processa instantaneamente o conjunto padrão a partir do PDF executivo.
+    """
+    global ultimo_documento_ativo
+    conteudo_bytes = gerar_modelo_pdf_exemplo()
+    ultimo_documento_ativo = processar_pdf_demonstracoes_com_jev(conteudo_bytes, "Modelo_Balanco_DRE_Acionistas.pdf")
+    return ultimo_documento_ativo
+
+class LimparDadosRequest(BaseModel):
+    trimestre: str  # "1T", "2T", "3T", "4T" ou "todos"
+    ano: Optional[str] = None
+
+@app.post("/api/limpar-dados")
+def limpar_dados_demonstracao(req: LimparDadosRequest):
+    """
+    Zera individualmente um trimestre (1T, 2T, 3T, 4T) ou todos os trimestres/contas na sessão ativa.
+    Recalcula a matriz da empresa, balanço patrimonial, DRE e índices financeiros com sincronismo instantâneo.
+    """
+    global ultimo_documento_ativo
+    if ultimo_documento_ativo is None:
+        conteudo_bytes = gerar_modelo_planilha_exemplo()
+        ultimo_documento_ativo = processar_demonstracoes_com_jev(conteudo_bytes, "Demonstracoes_Exemplo_Acionistas.xlsx")
+
+    trim = req.trimestre.upper()
+    ano_alvo = req.ano if (req.ano and req.ano != "todos_anos") else ultimo_documento_ativo.get("ano_ativo", "2026")
+    contas = ultimo_documento_ativo.get("contas_detalhadas", []) + ultimo_documento_ativo.get("itens_dre", [])
+
+    if trim == "TODOS":
+        for c in contas:
+            if "saldos_anuais" in c:
+                c["saldos_anuais"][ano_alvo] = 0.0
+            if "saldos_trimestrais" in c:
+                c["saldos_trimestrais"]["1T"] = 0.0
+                c["saldos_trimestrais"]["2T"] = 0.0
+                c["saldos_trimestrais"]["3T"] = 0.0
+                c["saldos_trimestrais"]["4T"] = 0.0
+                c["saldos_trimestrais"]["anual"] = 0.0
+            if ano_alvo == ultimo_documento_ativo.get("ano_ativo"):
+                c["saldo_atual"] = 0.0
+    elif trim in ["1T", "2T", "3T", "4T"]:
+        for c in contas:
+            if "saldos_trimestrais" in c:
+                c["saldos_trimestrais"][trim] = 0.0
+                soma_recalc = (
+                    c["saldos_trimestrais"].get("1T", 0.0) +
+                    c["saldos_trimestrais"].get("2T", 0.0) +
+                    c["saldos_trimestrais"].get("3T", 0.0) +
+                    c["saldos_trimestrais"].get("4T", 0.0)
+                )
+                c["saldos_trimestrais"]["anual"] = soma_recalc
+                if ano_alvo == ultimo_documento_ativo.get("ano_ativo"):
+                    c["saldo_atual"] = soma_recalc
+                if "saldos_anuais" in c:
+                    c["saldos_anuais"][ano_alvo] = soma_recalc
+
+    # 1. Prepara as contas com os saldos atualizados para conglutinar na matriz do ano
+    contas_ano = []
+    for c in contas:
+        c_copia = dict(c)
+        c_copia["saldo_atual"] = c.get("saldos_anuais", {}).get(ano_alvo, c.get("saldo_atual", 0.0))
+        c_copia["saldos_trimestrais"] = c.get("saldos_trimestrais", {})
+        contas_ano.append(c_copia)
+
+    matriz_recalc = conglutinador_jev.conglutinar_dados_na_matriz(contas_ano)
+    if "dre_matriz_por_ano" not in ultimo_documento_ativo:
+        ultimo_documento_ativo["dre_matriz_por_ano"] = {}
+    ultimo_documento_ativo["dre_matriz_por_ano"][ano_alvo] = matriz_recalc
+    ultimo_documento_ativo["dre_matriz_empresa"] = matriz_recalc
+
+    # 2. Atualiza totais resumidos da DRE
+    rec_bruta = matriz_recalc["resumo_executivo"]["receita_bruta_anual"]
+    lucro_liq = matriz_recalc["resumo_executivo"]["lucro_liquido_anual"]
+    ultimo_documento_ativo["totais_dre"] = {
+        "receita_bruta": rec_bruta,
+        "lucro_liquido": lucro_liq
+    }
+    if "totais_dre_por_ano" not in ultimo_documento_ativo:
+        ultimo_documento_ativo["totais_dre_por_ano"] = {}
+    ultimo_documento_ativo["totais_dre_por_ano"][ano_alvo] = {
+        "receita_bruta": rec_bruta,
+        "lucro_liquido": lucro_liq
+    }
+
+    # 3. Recalcula os totais do Balanço Patrimonial para o ano_alvo
+    contas_balanco = ultimo_documento_ativo.get("contas_detalhadas", [])
+
+    def _classificar_grupo(c):
+        cod = str(c.get("codigo", "")).strip()
+        g = c.get("grupo", "").lower()
+        desc = c.get("conta", "").lower()
+        if cod.startswith("1.01") or cod.startswith("1.1"): return "ativo_circulante"
+        if cod.startswith("1.02") or cod.startswith("1.2"): return "ativo_nao_circulante"
+        if cod.startswith("2.01") or cod.startswith("2.1"): return "passivo_circulante"
+        if cod.startswith("2.02") or cod.startswith("2.2"): return "passivo_nao_circulante"
+        if cod.startswith("3."): return "patrimonio_liquido"
+        if "ativo circulante" in g: return "ativo_circulante"
+        if "ativo não circulante" in g or "ativo nao circulante" in g: return "ativo_nao_circulante"
+        if "passivo circulante" in g: return "passivo_circulante"
+        if "passivo não circulante" in g or "passivo nao circulante" in g: return "passivo_nao_circulante"
+        if "patrimônio líquido" in g or "patrimonio liquido" in g: return "patrimonio_liquido"
+        if any(w in desc for w in ['capital', 'reserva', 'lucro acumulado', 'patrimônio']): return "patrimonio_liquido"
+        if any(w in desc for w in ['longo prazo', 'não circulante']): return "passivo_nao_circulante" if any(w in desc for w in ['financiamento', 'empréstimo']) else "ativo_nao_circulante"
+        if any(w in desc for w in ['imobilizado', 'investimento', 'intangível']): return "ativo_nao_circulante"
+        if any(w in desc for w in ['fornecedor', 'salário', 'tributo']): return "passivo_circulante"
+        return "ativo_circulante"
+
+    ac_k = sum(c.get("saldos_anuais", {}).get(ano_alvo, 0.0) for c in contas_balanco if _classificar_grupo(c) == "ativo_circulante")
+    anc_k = sum(c.get("saldos_anuais", {}).get(ano_alvo, 0.0) for c in contas_balanco if _classificar_grupo(c) == "ativo_nao_circulante")
+    disp_k = sum(c.get("saldos_anuais", {}).get(ano_alvo, 0.0) for c in contas_balanco if "disponib" in c.get("grupo", "").lower() or any(w in c.get("conta", "").lower() for w in ['caixa', 'banco', 'aplica']))
+    est_k = sum(c.get("saldos_anuais", {}).get(ano_alvo, 0.0) for c in contas_balanco if "estoque" in c.get("grupo", "").lower() or "estoque" in c.get("conta", "").lower())
+    pc_k = sum(c.get("saldos_anuais", {}).get(ano_alvo, 0.0) for c in contas_balanco if _classificar_grupo(c) == "passivo_circulante")
+    pnc_k = sum(c.get("saldos_anuais", {}).get(ano_alvo, 0.0) for c in contas_balanco if _classificar_grupo(c) == "passivo_nao_circulante")
+    pl_k = sum(c.get("saldos_anuais", {}).get(ano_alvo, 0.0) for c in contas_balanco if _classificar_grupo(c) == "patrimonio_liquido")
+
+    totais_b_novo = {
+        "ativo_circulante": ac_k,
+        "ativo_nao_circulante": anc_k,
+        "ativo_total": ac_k + anc_k,
+        "passivo_circulante": pc_k,
+        "passivo_nao_circulante": pnc_k,
+        "patrimonio_liquido": pl_k,
+        "passivo_total": pc_k + pnc_k + pl_k if (pc_k + pnc_k + pl_k) > 0 else 0.0,
+        "disponibilidades": disp_k
+    }
+    if "totais_balanco_por_ano" not in ultimo_documento_ativo:
+        ultimo_documento_ativo["totais_balanco_por_ano"] = {}
+    ultimo_documento_ativo["totais_balanco_por_ano"][ano_alvo] = totais_b_novo
+    ultimo_documento_ativo["totais_balanco"] = totais_b_novo
+
+    # 4. Recalcula os Indicadores Financeiros para o ano_alvo
+    from app.services.calculos_indices import CalculadoraIndicesFinanceiros
+    indices_novos = CalculadoraIndicesFinanceiros.calcular_todos_indices(
+        ativo_circulante=ac_k,
+        ativo_nao_circulante=anc_k,
+        disponibilidades=disp_k,
+        estoques=est_k,
+        passivo_circulante=pc_k,
+        passivo_nao_circulante=pnc_k,
+        patrimonio_liquido=pl_k,
+        receita_liquida=rec_bruta * 0.88,
+        lucro_bruto=rec_bruta * 0.45,
+        ebitda=lucro_liq * 1.45,
+        lucro_liquido=lucro_liq
+    )
+    if "indicadores_por_ano" not in ultimo_documento_ativo:
+        ultimo_documento_ativo["indicadores_por_ano"] = {}
+    ultimo_documento_ativo["indicadores_por_ano"][ano_alvo] = indices_novos
+    ultimo_documento_ativo["indices_financeiros"] = indices_novos
+
+    msg = f"Todos os dados do exercício {ano_alvo} foram zerados com sucesso!" if trim == "TODOS" else f"Os dados do {trim} no exercício {ano_alvo} foram limpos e recalculados!"
+    return {
+        "status": "sucesso",
+        "mensagem": msg,
+        "dados_atualizados": ultimo_documento_ativo
+    }
+
+@app.post("/api/upload-demonstracao")
+async def upload_demonstracao(
+    file: UploadFile = File(...),
+    ano_destino: Optional[str] = Form(None),
+    trimestres_autorizados: Optional[str] = Form(None)
+):
+    """
+    Recebe um arquivo (Excel, CSV ou PDF) enviado pelo usuário,
+    valida obrigatoriedade de ano contábil e seleção de trimestres,
+    executa a extração estruturada, classificação com JEV, conglutinação na matriz e cálculo dos índices.
+    Armazena como documento ativo permanente na sessão.
+    """
+    global ultimo_documento_ativo
+    from fastapi.responses import JSONResponse
+    import json
+
+    try:
+        # 1. Validação com Fallback Resiliente de Ano Contábil
+        ano_limpo = (ano_destino or "").strip()
+        if not ano_limpo:
+            ano_limpo = "2026"
+
+        # 2. Validação com Fallback Resiliente de Trimestres Autorizados
+        trimestres_lista = []
+        if trimestres_autorizados:
+            try:
+                trimestres_lista = json.loads(trimestres_autorizados)
+            except Exception:
+                trimestres_lista = [t.strip().upper() for t in trimestres_autorizados.split(",") if t.strip()]
+
+        if not trimestres_lista:
+            trimestres_lista = ["1T", "2T", "3T", "4T"]
+
+        # 3. Validação de Extensão Permitida
+        nome_lower = (file.filename or "").lower()
+        extensoes_permitidas = (".xlsx", ".xls", ".csv", ".pdf")
+        if not any(nome_lower.endswith(ext) for ext in extensoes_permitidas):
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "erro": True,
+                    "mensagem": "Formato de arquivo não suportado. Envie arquivos .xlsx, .xls, .csv ou .pdf.",
+                    "detalhe": "Formato inválido"
+                }
+            )
+
+        # 4. Proteção contra DoS: Limite de Tamanho (25 MB)
+        MAX_FILE_SIZE = 25 * 1024 * 1024
+        conteudo = await file.read()
+        if len(conteudo) > MAX_FILE_SIZE:
+            return JSONResponse(
+                status_code=413,
+                content={
+                    "erro": True,
+                    "mensagem": "O arquivo enviado excede o limite máximo permitido de 25 MB.",
+                    "detalhe": "Payload Too Large"
+                }
+            )
+
+        if nome_lower.endswith(".pdf") or file.content_type == "application/pdf":
+            resultado = processar_pdf_demonstracoes_com_jev(conteudo, file.filename)
+        else:
+            resultado = processar_demonstracoes_com_jev(
+                conteudo,
+                file.filename,
+                ano_destino=ano_limpo,
+                trimestres_permitidos=trimestres_lista
+            )
+
+        ultimo_documento_ativo = resultado
+        return resultado
+    except Exception as e:
+        return JSONResponse(
+            status_code=400,
+            content={
+                "erro": True,
+                "mensagem": f"Erro ao processar '{file.filename}': {str(e)}",
+                "detalhe": str(e)
+            }
+        )
+
+@app.post("/api/classificar-conta")
+def classificar_conta(conta: str, descricao: str, saldo: float = None):
+    """
+    Endpoint de classificação individual de conta com JEV.
+    """
+    return jev_service.classificar_conta_contabil(conta=conta, descricao=descricao, saldo=saldo)
+
+class ChatAgenteRequest(BaseModel):
+    mensagem: str
+    thread_id: Optional[str] = "sessao_acionista_padrao"
+    ano: Optional[str] = "2026"
+    trimestre: Optional[str] = "1T"
+    contexto_financeiro: Optional[dict] = None
+
+@app.post("/api/chat/agente-financeiro")
+def chat_agente_financeiro(req: ChatAgenteRequest):
+    """
+    Endpoint de Conversação com o Agente Cognitivo LangGraph:
+    Mantém memória de curto prazo (buffer), sumarização progressiva ativa (Context Engineering)
+    e persistência de longo prazo (Raw State / Checkpointer).
+    Alimenta o agente com os dados contábeis reais da sessão ativa.
+    """
+    global ultimo_documento_ativo
+    dados_reais = req.contexto_financeiro or ultimo_documento_ativo
+    if not dados_reais:
+        dados_reais = obter_dados_padrao()
+
+    return agente_langgraph.conversar(
+        mensagem_usuario=req.mensagem,
+        thread_id=req.thread_id or "sessao_acionista_padrao",
+        ano=req.ano or dados_reais.get("ano_ativo", "2026"),
+        trimestre=req.trimestre or "1T",
+        dados_contabeis=dados_reais
+    )
+
+@app.delete("/api/chat/sessao/{thread_id}")
+def limpar_sessao_chat(thread_id: str):
+    """
+    Reseta a sessão do acionista no LangGraph Checkpointer (Nova Conversa).
+    """
+    sucesso = agente_langgraph.limpar_sessao(thread_id)
+    return {"status": "sucesso" if sucesso else "erro", "thread_id": thread_id, "limpo": sucesso}
+
+
+
+

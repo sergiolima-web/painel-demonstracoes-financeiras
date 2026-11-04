@@ -1,0 +1,42 @@
+[
+  {
+    "id": "regra_1",
+    "termo_origem": "Receitas bruta de vendas",
+    "termo_normalizado": "receitas bruta de vendas",
+    "conta_matriz_id": "vendas_mercadorias",
+    "conta_matriz_nome": "1.01 VENDAS DE MERCADORIAS",
+    "observacao": "Receita Operacional Bruta de Vendas"
+  },
+  {
+    "id": "regra_2",
+    "termo_origem": "( - ) Vendas Canceladas e devoluções",
+    "termo_normalizado": "vendas canceladas e devolucoes",
+    "conta_matriz_id": "vendas_canceladas",
+    "conta_matriz_nome": "vendas_canceladas",
+    "observacao": "Particularidade cadastrada pelo usuário no painel"
+  },
+  {
+    "id": "regra_3",
+    "termo_origem": "ICMS sobre Vendas",
+    "termo_normalizado": "icms sobre vendas",
+    "conta_matriz_id": "icms_vendas",
+    "conta_matriz_nome": "icms_vendas",
+    "observacao": "Particularidade cadastrada pelo usuário no painel"
+  },
+  {
+    "id": "regra_4",
+    "termo_origem": "PIS Faturamento",
+    "termo_normalizado": "pis faturamento",
+    "conta_matriz_id": "pis_vendas",
+    "conta_matriz_nome": "pis_vendas",
+    "observacao": "Particularidade cadastrada pelo usuário no painel"
+  },
+  {
+    "id": "regra_5",
+    "termo_origem": "COFINS sobre Receita Bruta",
+    "termo_normalizado": "cofins sobre receita bruta",
+    "conta_matriz_id": "cofins_vendas",
+    "conta_matriz_nome": "cofins_vendas",
+    "observacao": "Particularidade cadastrada pelo usuário no painel"
+  }
+]
