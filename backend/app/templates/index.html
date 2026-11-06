@@ -256,8 +256,16 @@
         e.target.value = '';
       };
 
-      // Confirmação com Validação Rigorosa: Se esquecer trimestre ou não tiver ano, NÃO IMPORTA!
+      // Confirmação com Validação Rigorosa: Se não tiver Plano de Contas / DRE ou esquecer trimestre/ano, NÃO IMPORTA!
       const handleConfirmarImportacao = async () => {
+        if (!prontidaoImportacao?.liberado || planoContasLista.length === 0) {
+          setErroValidacaoImportacao(
+            prontidaoImportacao?.motivo ||
+            '🚫 Importação de Dados Restrita: Só é permitido importar movimentações se o Plano de Contas e a estrutura da DRE estiverem cadastrados! Use o botão verde abaixo para cadastrar primeiro a estrutura enxuta desta planilha.'
+          );
+          return;
+        }
+
         const trimestresAtivos = Object.keys(trimestresImportacao).filter(k => trimestresImportacao[k]);
         
         if (trimestresAtivos.length === 0) {
@@ -401,6 +409,20 @@
       // Estados para Matriz, Filiais e Plano de Contas Multi-Empresas
       const [empresasLista, setEmpresasLista] = React.useState([]);
       const [planoContasLista, setPlanoContasLista] = React.useState([]);
+      const [prontidaoImportacao, setProntidaoImportacao] = React.useState({
+        liberado: true,
+        plano_contas_cadastrado: true,
+        dre_cadastrada: true,
+        total_contas: 1,
+        contas_dre: 1,
+        contas_balanco: 0,
+        motivo: 'Plano de Contas e estrutura DRE cadastrados e prontos para importação.'
+      });
+      const [importandoEstrutura, setImportandoEstrutura] = React.useState(false);
+      const [resultadoEstrutura, setResultadoEstrutura] = React.useState(null);
+      const [tipoPecaEstrutura, setTipoPecaEstrutura] = React.useState('AUTO');
+      const [limparAnteriorEstrutura, setLimparAnteriorEstrutura] = React.useState(true);
+      const estruturaInputRef = useRef(null);
       const [empresaSelecionadaFiltro, setEmpresaSelecionadaFiltro] = React.useState('CONSOLIDADO');
       const [msgEmpresaPlano, setMsgEmpresaPlano] = React.useState('');
 
@@ -447,8 +469,71 @@
           const json = await res.json();
           if (json.empresas) setEmpresasLista(json.empresas);
           if (json.plano_contas) setPlanoContasLista(json.plano_contas);
+          if (json.prontidao_importacao) setProntidaoImportacao(json.prontidao_importacao);
         } catch (e) {
           console.error("Erro ao carregar empresas e plano de contas", e);
+        }
+      };
+
+      const handleImportarEstruturaContas = async (arquivo, tipoForcarParam = null, limparAntParam = null) => {
+        if (!arquivo) return;
+        setImportandoEstrutura(true);
+        setErroValidacaoImportacao('');
+        try {
+          const tokenSalvo = sessionStorage.getItem('painel_access_token') || '';
+          const formData = new FormData();
+          formData.append('file', arquivo);
+          formData.append('escopo', novaContaEscopo || 'MATRIZ');
+          formData.append('tipo_forcar', tipoForcarParam !== null ? tipoForcarParam : tipoPecaEstrutura);
+          formData.append('limpar_anterior', String(limparAntParam !== null ? limparAntParam : limparAnteriorEstrutura));
+
+          const res = await fetch('/api/plano-contas/importar-estrutura', {
+            method: 'POST',
+            headers: { 'X-Access-Token': tokenSalvo },
+            body: formData
+          });
+          const json = await res.json();
+          if (!res.ok || json.erro) {
+            throw new Error(json.mensagem || 'Não foi possível extrair contas válidas deste arquivo.');
+          }
+
+          setResultadoEstrutura(json);
+          if (json.plano_contas) setPlanoContasLista(json.plano_contas);
+          if (json.prontidao_importacao) setProntidaoImportacao(json.prontidao_importacao);
+          setMsgEmpresaPlano(`✅ ${json.mensagem}`);
+          setMensagemSucesso(`✅ ${json.mensagem}`);
+          await carregarEmpresasPlano();
+          await carregarRegrasDePara();
+          setTimeout(() => setMsgEmpresaPlano(''), 10000);
+          setTimeout(() => setMensagemSucesso(''), 10000);
+        } catch (err) {
+          alert(err.message || 'Erro ao importar estrutura do Plano de Contas / DRE.');
+        } finally {
+          setImportandoEstrutura(false);
+        }
+      };
+
+      const handleLimparPlanoContas = async () => {
+        if (!confirm('⚠️ Deseja zerar todas as contas cadastradas do Plano de Contas e DRE?\n\nEnquanto o Plano de Contas e a DRE estiverem vazios, a importação de movimentações financeiras ficará bloqueada até que você importe ou cadastre a estrutura novamente.')) {
+          return;
+        }
+        try {
+          const tokenSalvo = sessionStorage.getItem('painel_access_token') || '';
+          const res = await fetch('/api/plano-contas/limpar-tudo', {
+            method: 'POST',
+            headers: { 'X-Access-Token': tokenSalvo }
+          });
+          const json = await res.json();
+          if (json.status === 'sucesso') {
+            setPlanoContasLista([]);
+            setResultadoEstrutura(null);
+            if (json.prontidao_importacao) setProntidaoImportacao(json.prontidao_importacao);
+            await carregarEmpresasPlano();
+            await carregarRegrasDePara();
+            setMsgEmpresaPlano(`🧹 ${json.mensagem} Agora a importação de saldos está restrita até que você cadastre ou importe o Plano de Contas e a DRE.`);
+          }
+        } catch (e) {
+          console.error(e);
         }
       };
 
@@ -950,9 +1035,9 @@
                 </div>
               </div>
 
-              {/* Barra de Filtros: Exercício (Anos) e Período (Trimestres) Lado a Lado */}
-              <div className="py-2 border-t border-slate-200 flex items-center gap-3 overflow-x-auto">
-                {/* Seletor de Exercício / Anos em Lista Suspensa + Botões Rápidos Fixos (2026, 2025, 2024, 2023) */}
+              {/* Barra de Filtros: Exercício (Anos) e Período (Trimestres) em Listas Suspensas Lado a Lado */}
+              <div className="py-2 border-t border-slate-200 flex items-center gap-4 overflow-x-auto">
+                {/* Seletor de Exercício / Anos em Lista Suspensa */}
                 <div className="flex items-center gap-2 shrink-0">
                   <label htmlFor="select-ano" className="text-cyan-800 font-bold text-xs flex items-center gap-1 whitespace-nowrap cursor-pointer">
                     <span>🏛️</span>
@@ -976,66 +1061,33 @@
                       ▼
                     </div>
                   </div>
-
-                  {/* Botões Rápidos de Anos Sempre Visíveis (2026, 2025, 2024, 2023) */}
-                  <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200">
-                    <button
-                      type="button"
-                      onClick={() => setAnoAtivo('todos_anos')}
-                      className={`px-2 py-1 text-[11px] font-bold rounded-lg transition-all whitespace-nowrap cursor-pointer ${
-                        anoAtivo === 'todos_anos'
-                          ? 'bg-cyan-600 text-white shadow-sm'
-                          : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200'
-                      }`}
-                      title="Comparativo Todos os Anos (2026, 2025, 2024, 2023)"
-                    >
-                      🌐 Todos
-                    </button>
-                    {anosDisponiveis.map((ano) => (
-                      <button
-                        key={ano}
-                        type="button"
-                        onClick={() => setAnoAtivo(ano)}
-                        className={`px-2 py-1 text-[11px] font-bold rounded-lg transition-all whitespace-nowrap cursor-pointer ${
-                          anoAtivo === ano
-                            ? 'bg-cyan-600 text-white shadow-sm'
-                            : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200'
-                        }`}
-                        title={`Visualizar Exercício ${ano}`}
-                      >
-                        {ano}
-                      </button>
-                    ))}
-                  </div>
                 </div>
 
                 {/* Divisor Vertical Elegante */}
                 <div className="h-6 w-px bg-slate-300 mx-1 shrink-0 hidden sm:block"></div>
 
-                {/* Seletor de Trimestres (Posicionado ao Lado) */}
+                {/* Seletor de Trimestres em Lista Suspensa (Aprimorado conforme solicitado) */}
                 <div className="flex items-center gap-2 shrink-0">
-                  <span className="text-amber-700 font-bold text-xs flex items-center gap-1 whitespace-nowrap">
+                  <label htmlFor="select-trimestre" className="text-amber-700 font-bold text-xs flex items-center gap-1 whitespace-nowrap cursor-pointer">
                     <span>⏱️</span>
                     <span>Trimestres:</span>
-                  </span>
-                  <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200">
-                    {periodosLista.map((p) => {
-                      const ativo = periodoAtivo === p.id;
-                      return (
-                        <button
-                          key={p.id}
-                          onClick={() => setPeriodoAtivo(p.id)}
-                          className={`px-2.5 py-1 text-xs font-medium rounded-lg transition-all flex items-center gap-1 whitespace-nowrap ${
-                            ativo
-                              ? 'bg-gradient-to-r from-amber-500 to-yellow-500 text-slate-950 shadow-md shadow-amber-500/25 font-bold'
-                              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200'
-                          }`}
-                        >
-                          <span>{p.icone}</span>
-                          <span>{p.rotulo}</span>
-                        </button>
-                      );
-                    })}
+                  </label>
+                  <div className="relative">
+                    <select
+                      id="select-trimestre"
+                      value={periodoAtivo}
+                      onChange={(e) => setPeriodoAtivo(e.target.value)}
+                      className="bg-white hover:bg-amber-50/60 text-slate-900 text-xs font-bold pl-3 pr-8 py-1.5 rounded-xl border border-amber-300 shadow-sm focus:outline-none focus:ring-2 focus:ring-amber-500 cursor-pointer appearance-none transition-all"
+                    >
+                      {periodosLista.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.icone} {p.rotulo}
+                        </option>
+                      ))}
+                    </select>
+                    <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2.5 text-amber-700 text-[10px]">
+                      ▼
+                    </div>
                   </div>
                 </div>
               </div>
@@ -1117,77 +1169,6 @@
 
             {data && (
               <>
-                {/* KPI Cards de Topo Compactos & Elegantes: 1º ATIVO, 2º PASSIVO, 3º PL, 4º RECEITA, 5º LUCRO, 6º ROE */}
-                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 sm:gap-2.5">
-                  
-                  {/* 1. ATIVO TOTAL */}
-                  <div className="bg-white border border-slate-200 hover:border-indigo-300 rounded-xl p-2.5 shadow-sm hover:shadow-md transition-all">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] sm:text-[11px] font-bold text-indigo-800 uppercase tracking-wider">Ativo Total</span>
-                      <span className="text-xs">🏛️</span>
-                    </div>
-                    <div className="text-sm sm:text-base lg:text-lg font-black text-slate-900 mt-0.5 tracking-tight truncate">
-                      {formatarMoeda(ativoTotal)}
-                    </div>
-                  </div>
-
-                  {/* 2. PASSIVO TOTAL */}
-                  <div className="bg-white border border-slate-200 hover:border-amber-300 rounded-xl p-2.5 shadow-sm hover:shadow-md transition-all">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] sm:text-[11px] font-bold text-amber-800 uppercase tracking-wider">Passivo Total</span>
-                      <span className="text-xs">⚖️</span>
-                    </div>
-                    <div className="text-sm sm:text-base lg:text-lg font-black text-slate-900 mt-0.5 tracking-tight truncate">
-                      {formatarMoeda(passivoTotal)}
-                    </div>
-                  </div>
-
-                  {/* 3. PATRIMÔNIO LÍQUIDO (PL) */}
-                  <div className="bg-white border border-slate-200 hover:border-purple-300 rounded-xl p-2.5 shadow-sm hover:shadow-md transition-all">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] sm:text-[11px] font-bold text-purple-800 uppercase tracking-wider">Patrimônio Líquido</span>
-                      <span className="text-xs">💎</span>
-                    </div>
-                    <div className="text-sm sm:text-base lg:text-lg font-black text-slate-900 mt-0.5 tracking-tight truncate">
-                      {formatarMoeda(plTotal)}
-                    </div>
-                  </div>
-
-                  {/* 4. RECEITA BRUTA */}
-                  <div className="bg-white border border-slate-200 hover:border-cyan-300 rounded-xl p-2.5 shadow-sm hover:shadow-md transition-all">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] sm:text-[11px] font-bold text-cyan-800 uppercase tracking-wider">Receita Bruta</span>
-                      <span className="text-xs">📈</span>
-                    </div>
-                    <div className="text-sm sm:text-base lg:text-lg font-black text-slate-900 mt-0.5 tracking-tight truncate">
-                      {formatarMoeda(receitaPeriodo)}
-                    </div>
-                  </div>
-
-                  {/* 5. LUCRO LÍQUIDO */}
-                  <div className="bg-white border border-slate-200 hover:border-emerald-300 rounded-xl p-2.5 shadow-sm hover:shadow-md transition-all">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] sm:text-[11px] font-bold text-emerald-800 uppercase tracking-wider">Lucro Líquido</span>
-                      <span className="text-xs">🎯</span>
-                    </div>
-                    <div className={`text-sm sm:text-base lg:text-lg font-black mt-0.5 tracking-tight truncate ${lucroPeriodo < 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
-                      {lucroPeriodo < 0 ? `(${formatarMoeda(Math.abs(lucroPeriodo))})` : formatarMoeda(lucroPeriodo)}
-                    </div>
-                  </div>
-
-                  {/* 6. ROE (RETORNO S/ PL) */}
-                  <div className="bg-white border border-slate-200 hover:border-amber-400 rounded-xl p-2.5 shadow-sm hover:shadow-md transition-all">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] sm:text-[11px] font-bold text-amber-800 uppercase tracking-wider">ROE (Retorno s/ PL)</span>
-                      <span className="text-xs">⚡</span>
-                    </div>
-                    <div className="text-sm sm:text-base lg:text-lg font-black text-emerald-600 mt-0.5 tracking-tight truncate">
-                      {plTotal > 0 && lucroPeriodo !== 0 ? ((lucroPeriodo / plTotal) * 100).toFixed(2) : (plTotal > 0 && indExibicao?.rentabilidade?.roe_pct && lucroPeriodo !== 0 ? indExibicao.rentabilidade.roe_pct : '0.00')}% a.a.
-                    </div>
-                  </div>
-
-                </div>
-
                 {/* Abas */}
                 <div className="flex items-center space-x-2 border-b border-slate-200 pb-2 overflow-x-auto">
                   <button
@@ -1528,6 +1509,147 @@
                           </div>
                         </div>
                       </div>
+                    </div>
+
+                    {/* SEÇÃO 1.5: Importador Inteligente de Estrutura Enxuta (Plano de Contas ou DRE) & Trava de Governança */}
+                    <div className="bg-gradient-to-br from-emerald-950 via-slate-900 to-indigo-950 border border-emerald-500/40 rounded-2xl p-6 shadow-xl text-white space-y-5">
+                      <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 border-b border-slate-800 pb-4">
+                        <div className="space-y-1.5 max-w-3xl">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className={`px-3 py-1 rounded-full text-[11px] font-black uppercase tracking-wider border ${
+                              prontidaoImportacao?.liberado
+                                ? 'bg-emerald-500/20 text-emerald-300 border-emerald-400/50'
+                                : 'bg-rose-500/25 text-rose-300 border-rose-400/60 animate-pulse'
+                            }`}>
+                              {prontidaoImportacao?.liberado
+                                ? `✅ IMPORTAÇÃO DE SALDOS LIBERADA (${planoContasLista.length} CONTAS CADASTRADAS)`
+                                : '🔒 IMPORTAÇÃO DE SALDOS BLOQUEADA — CADASTRE O PLANO DE CONTAS E A DRE PRIMEIRO'}
+                            </span>
+                            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-400/40">
+                              🧹 Higienização Enxuta + Detecção Automática de Peça Contábil
+                            </span>
+                          </div>
+                          <h3 className="text-base sm:text-lg font-extrabold text-white flex items-center gap-2">
+                            <span>📥</span>
+                            <span>Importar & Cadastrar Estrutura Enxuta de Contas (Plano de Contas ou DRE)</span>
+                          </h3>
+                          <p className="text-xs text-slate-300 leading-relaxed">
+                            Importe qualquer planilha (<strong>.xlsx, .xls, .csv</strong>) ou <strong>.pdf</strong> contendo seu <strong>Plano de Contas</strong> ou <strong>DRE</strong>. O sistema <strong>identifica sozinho qual peça contábil está sendo importada</strong>, limpa todos os valores numéricos, saldos, datas e ruídos para deixar a estrutura <strong>100% enxuta</strong>, cadastra na <strong>Matriz</strong> e propaga automaticamente para todas as <strong>Filiais</strong>!
+                          </p>
+                        </div>
+
+                        <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+                          <input
+                            type="file"
+                            ref={estruturaInputRef}
+                            accept=".xlsx,.xls,.csv,.pdf"
+                            onChange={(e) => {
+                              if (e.target.files && e.target.files[0]) {
+                                handleImportarEstruturaContas(e.target.files[0]);
+                                e.target.value = '';
+                              }
+                            }}
+                            className="hidden"
+                          />
+                          <button
+                            type="button"
+                            disabled={importandoEstrutura}
+                            onClick={() => estruturaInputRef.current && estruturaInputRef.current.click()}
+                            className="px-5 py-3 rounded-2xl bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-500 hover:brightness-110 active:scale-95 text-slate-950 text-xs font-black shadow-lg shadow-emerald-500/30 transition-all flex items-center gap-2 cursor-pointer"
+                          >
+                            <span>📥</span>
+                            <span>{importandoEstrutura ? 'Limpando & Identificando Peça...' : 'Importar Planilha de Contas / DRE (Deixar Enxuta)'}</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={handleLimparPlanoContas}
+                            className="px-3.5 py-3 rounded-2xl bg-slate-800 hover:bg-rose-900/70 text-rose-300 border border-rose-500/30 text-xs font-bold transition-all cursor-pointer"
+                            title="Zerar todas as contas do Plano de Contas (Bloqueia importação até novo cadastro)"
+                          >
+                            🗑️ Limpar Plano de Contas
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Controles de Detecção da Peça Contábil e Modo Enxuto */}
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 bg-slate-950/60 border border-slate-800 rounded-xl p-4">
+                        <div>
+                          <label className="block text-[11px] font-bold text-emerald-300 uppercase mb-1">
+                            🔍 Identificação da Peça Contábil:
+                          </label>
+                          <select
+                            value={tipoPecaEstrutura}
+                            onChange={e => setTipoPecaEstrutura(e.target.value)}
+                            className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs font-bold text-white focus:outline-none focus:border-emerald-400"
+                          >
+                            <option value="AUTO">🤖 Automático (Detecta Plano de Contas vs DRE vs Balanço)</option>
+                            <option value="PLANO_DE_CONTAS">📚 Forçar como Plano de Contas Completo</option>
+                            <option value="DRE">📈 Forçar como Estrutura de DRE (Resultado)</option>
+                            <option value="BALANCO">⚖️ Forçar como Estrutura de Balanço Patrimonial</option>
+                          </select>
+                        </div>
+
+                        <div className="flex items-center">
+                          <label className="flex items-start gap-2.5 cursor-pointer select-none">
+                            <input
+                              type="checkbox"
+                              checked={limparAnteriorEstrutura}
+                              onChange={e => setLimparAnteriorEstrutura(e.target.checked)}
+                              className="mt-0.5 h-4 w-4 rounded accent-emerald-500 cursor-pointer"
+                            />
+                            <div>
+                              <span className="text-xs font-bold text-white block">
+                                Substituir contas anteriores ao importar (Deixar 100% Enxuto)
+                              </span>
+                              <span className="text-[11px] text-slate-400 block">
+                                Remove contas antigas e mantém apenas as contas limpas da planilha importada.
+                              </span>
+                            </div>
+                          </label>
+                        </div>
+
+                        <div className="flex flex-col justify-center bg-slate-900/90 border border-slate-800 rounded-xl px-3.5 py-2 text-[11px]">
+                          <div className="flex items-center justify-between text-slate-300">
+                            <span>Status da Restrição:</span>
+                            <strong className={prontidaoImportacao?.liberado ? 'text-emerald-400' : 'text-rose-400'}>
+                              {prontidaoImportacao?.liberado ? 'Liberado p/ Importar Saldos' : 'Restrito (Sem Cadastro)'}
+                            </strong>
+                          </div>
+                          <div className="flex items-center justify-between text-slate-400 mt-1">
+                            <span>Contas DRE / Total:</span>
+                            <span className="font-mono font-bold text-white">
+                              {prontidaoImportacao?.contas_dre ?? planoContasLista.filter(c => c.demonstracao === 'DRE').length} DRE / {planoContasLista.length} Total
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Card de Resultado da Última Importação Enxuta */}
+                      {resultadoEstrutura && (
+                        <div className="bg-emerald-950/70 border border-emerald-500/40 rounded-xl p-4 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="px-2.5 py-0.5 rounded-md bg-emerald-400 text-slate-950 text-[11px] font-black uppercase">
+                                Peça Reconhecida: {resultadoEstrutura.rotulo_peca || resultadoEstrutura.peca_contabil_detectada}
+                              </span>
+                              <span className="text-xs font-bold text-emerald-200">
+                                Arquivo: {resultadoEstrutura.arquivo}
+                              </span>
+                            </div>
+                            <p className="text-xs text-slate-200">
+                              Foram higienizadas e cadastradas <strong>{resultadoEstrutura.total_contas_importadas}</strong> contas enxutas (<strong>{resultadoEstrutura.contas_dre_importadas} de DRE</strong> e <strong>{resultadoEstrutura.contas_balanco_importadas} de Balanço</strong>), descartando <strong>{resultadoEstrutura.linhas_ruido_descartadas}</strong> linhas de saldos/cabeçalhos/ruídos.
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setResultadoEstrutura(null)}
+                            className="text-xs text-emerald-300 hover:text-white font-bold shrink-0"
+                          >
+                            ✕ Fechar Resumo
+                          </button>
+                        </div>
+                      )}
                     </div>
 
                     {/* SEÇÃO 2: Plano de Contas Multi-Empresas (Herança Automática Matriz -> Filiais) */}
@@ -2141,6 +2263,77 @@
                       </button>
                     </div>
 
+                    {/* Cards de Valores Posicionados Acima da Estrutura de Contas Gerenciais (Conforme Seta Indicada): 1º ATIVO, 2º PASSIVO, 3º PL, 4º RECEITA, 5º LUCRO, 6º ROE */}
+                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 sm:gap-2.5">
+                      
+                      {/* 1. ATIVO TOTAL */}
+                      <div className="bg-white border border-slate-200 hover:border-indigo-300 rounded-xl p-2.5 shadow-sm hover:shadow-md transition-all">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] sm:text-[11px] font-bold text-indigo-800 uppercase tracking-wider">Ativo Total</span>
+                          <span className="text-xs">🏛️</span>
+                        </div>
+                        <div className="text-sm sm:text-base lg:text-lg font-black text-slate-900 mt-0.5 tracking-tight truncate">
+                          {formatarMoeda(ativoTotal)}
+                        </div>
+                      </div>
+
+                      {/* 2. PASSIVO TOTAL */}
+                      <div className="bg-white border border-slate-200 hover:border-amber-300 rounded-xl p-2.5 shadow-sm hover:shadow-md transition-all">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] sm:text-[11px] font-bold text-amber-800 uppercase tracking-wider">Passivo Total</span>
+                          <span className="text-xs">⚖️</span>
+                        </div>
+                        <div className="text-sm sm:text-base lg:text-lg font-black text-slate-900 mt-0.5 tracking-tight truncate">
+                          {formatarMoeda(passivoTotal)}
+                        </div>
+                      </div>
+
+                      {/* 3. PATRIMÔNIO LÍQUIDO (PL) */}
+                      <div className="bg-white border border-slate-200 hover:border-purple-300 rounded-xl p-2.5 shadow-sm hover:shadow-md transition-all">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] sm:text-[11px] font-bold text-purple-800 uppercase tracking-wider">Patrimônio Líquido</span>
+                          <span className="text-xs">💎</span>
+                        </div>
+                        <div className="text-sm sm:text-base lg:text-lg font-black text-slate-900 mt-0.5 tracking-tight truncate">
+                          {formatarMoeda(plTotal)}
+                        </div>
+                      </div>
+
+                      {/* 4. RECEITA BRUTA */}
+                      <div className="bg-white border border-slate-200 hover:border-cyan-300 rounded-xl p-2.5 shadow-sm hover:shadow-md transition-all">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] sm:text-[11px] font-bold text-cyan-800 uppercase tracking-wider">Receita Bruta</span>
+                          <span className="text-xs">📈</span>
+                        </div>
+                        <div className="text-sm sm:text-base lg:text-lg font-black text-slate-900 mt-0.5 tracking-tight truncate">
+                          {formatarMoeda(receitaPeriodo)}
+                        </div>
+                      </div>
+
+                      {/* 5. LUCRO LÍQUIDO */}
+                      <div className="bg-white border border-slate-200 hover:border-emerald-300 rounded-xl p-2.5 shadow-sm hover:shadow-md transition-all">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] sm:text-[11px] font-bold text-emerald-800 uppercase tracking-wider">Lucro Líquido</span>
+                          <span className="text-xs">🎯</span>
+                        </div>
+                        <div className={`text-sm sm:text-base lg:text-lg font-black mt-0.5 tracking-tight truncate ${lucroPeriodo < 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
+                          {lucroPeriodo < 0 ? `(${formatarMoeda(Math.abs(lucroPeriodo))})` : formatarMoeda(lucroPeriodo)}
+                        </div>
+                      </div>
+
+                      {/* 6. ROE (RETORNO S/ PL) */}
+                      <div className="bg-white border border-slate-200 hover:border-amber-400 rounded-xl p-2.5 shadow-sm hover:shadow-md transition-all">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] sm:text-[11px] font-bold text-amber-800 uppercase tracking-wider">ROE (Retorno s/ PL)</span>
+                          <span className="text-xs">⚡</span>
+                        </div>
+                        <div className="text-sm sm:text-base lg:text-lg font-black text-emerald-600 mt-0.5 tracking-tight truncate">
+                          {plTotal > 0 && lucroPeriodo !== 0 ? ((lucroPeriodo / plTotal) * 100).toFixed(2) : (plTotal > 0 && indExibicao?.rentabilidade?.roe_pct && lucroPeriodo !== 0 ? indExibicao.rentabilidade.roe_pct : '0.00')}% a.a.
+                        </div>
+                      </div>
+
+                    </div>
+
                     {/* Tabela Dinâmica e Inteligente da Matriz DRE */}
                     <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-md">
                       <div className="overflow-x-auto">
@@ -2469,6 +2662,57 @@
                         <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-white text-amber-900 border border-amber-300 shrink-0">
                           {arquivoPendente?.size ? `${(arquivoPendente.size / 1024).toFixed(1)} KB` : 'Pronto'}
                         </span>
+                      </div>
+
+                      {/* Card de Verificação Obrigatória do Plano de Contas & DRE + Atalho para Cadastro Enxuto */}
+                      <div className={`p-4 rounded-2xl border space-y-2.5 ${
+                        prontidaoImportacao?.liberado && planoContasLista.length > 0
+                          ? 'bg-emerald-50/80 border-emerald-300 text-emerald-950'
+                          : 'bg-rose-50 border-rose-400 text-rose-950'
+                      }`}>
+                        <div className="flex items-center justify-between gap-2 flex-wrap">
+                          <span className="text-xs font-black uppercase tracking-wider flex items-center gap-1.5">
+                            <span>{prontidaoImportacao?.liberado && planoContasLista.length > 0 ? '✅' : '🔒'}</span>
+                            <span>
+                              {prontidaoImportacao?.liberado && planoContasLista.length > 0
+                                ? `Plano de Contas & DRE Cadastrados (${planoContasLista.length} contas ativas)`
+                                : 'Importação de Saldos Bloqueada: Plano de Contas / DRE Não Cadastrado'}
+                            </span>
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setModalPreImportacao(false);
+                              setActiveTab('matriz_filiais');
+                            }}
+                            className="text-[11px] font-bold underline text-indigo-800 hover:text-indigo-950 cursor-pointer"
+                          >
+                            Ver Aba Plano de Contas ➔
+                          </button>
+                        </div>
+                        <p className="text-[11px] leading-relaxed">
+                          {prontidaoImportacao?.liberado && planoContasLista.length > 0
+                            ? 'O Plano de Contas e a DRE já estão registrados. Caso esta planilha seja uma estrutura de Plano de Contas ou DRE que você deseja cadastrar (limpando os valores para deixar enxuta), clique no botão abaixo:'
+                            : (prontidaoImportacao?.motivo || 'A importação de movimentações só é permitida após cadastrar o Plano de Contas e a DRE. Você pode cadastrar as contas diretamente desta planilha clicando abaixo:')}
+                        </p>
+                        <div className="pt-1">
+                          <button
+                            type="button"
+                            disabled={importandoEstrutura || !arquivoPendente}
+                            onClick={async () => {
+                              if (!arquivoPendente) return;
+                              await handleImportarEstruturaContas(arquivoPendente, 'AUTO', false);
+                            }}
+                            className="w-full py-2 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black shadow-sm transition-all flex items-center justify-center gap-2 cursor-pointer"
+                          >
+                            <span>🧹</span>
+                            <span>
+                              {importandoEstrutura
+                                ? 'Reconhecendo Peça Contábil e Limpando Dados...'
+                                : 'Cadastrar Contas Desta Planilha no Plano de Contas / DRE (Limpar Valores e Deixar Enxuta)'}
+                            </span>
+                          </button>
+                        </div>
                       </div>
 
                       {/* Seção 1: Ano Contábil / Exercício Aberto */}

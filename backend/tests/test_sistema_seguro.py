@@ -1,3 +1,7 @@
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
 import pytest
 import io
 from fastapi.testclient import TestClient
@@ -516,6 +520,99 @@ def test_importar_dre_2026_preserva_2023_2024_2025_2026():
     assert "2023" in dados["dre_matriz_por_ano"]
 
     client.post("/api/banco-dados/expurgar-tudo")
+
+
+def test_restricao_upload_sem_plano_contas_e_importacao_estrutura_enxuta():
+    """
+    Valida a regra de governança solicitada:
+    1. Se o Plano de Contas e a DRE não estiverem cadastrados (após /api/plano-contas/limpar-tudo),
+       a importação de dados (/api/upload-demonstracao) deve ser BLOQUEADA (HTTP 400 com bloqueio_cadastro=True).
+    2. O importador de estrutura (/api/plano-contas/importar-estrutura) deve:
+       - Reconhecer automaticamente a peça contábil ('DRE' vs 'PLANO_DE_CONTAS');
+       - Limpar todos os saldos numéricos, datas, percentuais e cabeçalhos ('deixar enxuta');
+       - Cadastrar as contas na Matriz, propagar para as Filiais e liberar imediatamente a importação de saldos!
+    """
+    # 1. Zera o Plano de Contas / DRE
+    resp_limpar = client.post("/api/plano-contas/limpar-tudo")
+    assert resp_limpar.status_code == 200
+    assert resp_limpar.json()["prontidao_importacao"]["liberado"] is False
+
+    # 2. Tenta importar movimentação de DRE sem Plano de Contas/DRE cadastrado -> DEVE BLOQUEAR!
+    csv_movimento = (
+        "Código;Conta;Saldo 2026\n"
+        "3.01.01;Vendas de Mercadorias;1500000,00\n"
+    )
+    resp_bloqueado = client.post(
+        "/api/upload-demonstracao",
+        files={"file": ("dre_2026.csv", io.BytesIO(csv_movimento.encode("utf-8")), "text/csv")},
+        data={"ano_destino": "2026", "trimestres_autorizados": '["1T","2T","3T","4T"]'}
+    )
+    assert resp_bloqueado.status_code == 400
+    json_bloq = resp_bloqueado.json()
+    assert json_bloq["erro"] is True
+    assert json_bloq["bloqueio_cadastro"] is True
+
+    # 3. Importa uma planilha suja de DRE (com saldos R$, percentuais, datas e cabeçalhos) para cadastrar as contas enxutas
+    csv_estrutura_dre_suja = (
+        "Código;Descrição da Conta;1º Trim;Total 2026;AV %\n"
+        "--;CNPJ: 12.345.678/0001-90;--;--;--\n"
+        "3.01.01;3.01.01 - Vendas de Mercadorias R$ 1.850.000,00 45,2%;450000,00;1850000,00;100%\n"
+        "3.01.02;(-) ICMS sobre Vendas (R$ 220.000,00) 12,0%;-55000,00;-220000,00;12%\n"
+        "4.01.01;Custo das Mercadorias Vendidas (CMV) 31/12/2026 R$ 600.000,00;-150000,00;-600000,00;32%\n"
+        "5.01.01;Salários e Ordenados Administrativos R$ 180.000,00;-45000,00;-180000,00;10%\n"
+    )
+    resp_imp_dre = client.post(
+        "/api/plano-contas/importar-estrutura",
+        files={"file": ("estrutura_dre_empresa.csv", io.BytesIO(csv_estrutura_dre_suja.encode("utf-8")), "text/csv")},
+        data={"escopo": "MATRIZ", "tipo_forcar": "AUTO", "limpar_anterior": "true"}
+    )
+    assert resp_imp_dre.status_code == 200
+    res_dre = resp_imp_dre.json()
+    assert res_dre["peca_contabil_detectada"] == "DRE"
+    assert res_dre["total_contas_importadas"] == 4
+    assert res_dre["prontidao_importacao"]["liberado"] is True
+
+    # Verifica se os nomes das contas ficaram 100% enxutos (sem R$, sem números de saldos e sem datas)
+    nomes_enxutos = [c["nome_conta"] for c in res_dre["contas_cadastradas"]]
+    for nome in nomes_enxutos:
+        assert "1.850.000" not in nome
+        assert "220.000" not in nome
+        assert "600.000" not in nome
+        assert "31/12/2026" not in nome
+        assert "R$" not in nome
+
+    # 4. Importa um Plano de Contas completo (Ativo + Passivo + DRE) e verifica se detecta PLANO_DE_CONTAS
+    csv_plano_completo = (
+        "Código;Conta;Saldo\n"
+        "1.01.01;Caixa e Equivalentes de Caixa;500000,00\n"
+        "2.01.01;Fornecedores Nacionais;200000,00\n"
+        "2.03.01;Capital Social Subscrito;300000,00\n"
+        "3.01.01;Receita de Vendas de Mercadorias;1500000,00\n"
+        "4.01.01;Custo da Mercadoria Vendida;600000,00\n"
+    )
+    resp_imp_pc = client.post(
+        "/api/plano-contas/importar-estrutura",
+        files={"file": ("plano_de_contas_geral.csv", io.BytesIO(csv_plano_completo.encode("utf-8")), "text/csv")},
+        data={"escopo": "MATRIZ", "tipo_forcar": "AUTO", "limpar_anterior": "true"}
+    )
+    assert resp_imp_pc.status_code == 200
+    res_pc = resp_imp_pc.json()
+    assert res_pc["peca_contabil_detectada"] == "PLANO_DE_CONTAS"
+    assert res_pc["contas_dre_importadas"] >= 2
+    assert res_pc["contas_balanco_importadas"] >= 3
+    assert res_pc["prontidao_importacao"]["liberado"] is True
+
+    # 5. Agora que o Plano de Contas e a DRE estão cadastrados, o upload de movimentação DEVE SER LIBERADO!
+    resp_liberado = client.post(
+        "/api/upload-demonstracao",
+        files={"file": ("dre_2026.csv", io.BytesIO(csv_movimento.encode("utf-8")), "text/csv")},
+        data={"ano_destino": "2026", "trimestres_autorizados": '["1T","2T","3T","4T"]'}
+    )
+    assert resp_liberado.status_code == 200
+    assert resp_liberado.json()["totais_dre_por_ano"]["2026"]["receita_bruta"] == 1500000.0
+
+    client.post("/api/banco-dados/expurgar-tudo")
+
 
 
 

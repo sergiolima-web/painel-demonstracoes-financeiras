@@ -487,6 +487,24 @@ async def upload_demonstracao(
     import json
 
     try:
+        # REGRA DE GOVERNANÇA CONTÁBIL: Restringe a importação de movimentação/saldos somente se
+        # o Plano de Contas e a estrutura da DRE já estiverem cadastrados no sistema!
+        prontidao = empresas_plano_service.verificar_prontidao_importacao()
+        if not prontidao.get("liberado", False):
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "erro": True,
+                    "bloqueio_cadastro": True,
+                    "prontidao_importacao": prontidao,
+                    "mensagem": prontidao.get(
+                        "motivo",
+                        "Importação bloqueada: Cadastre ou importe primeiro a estrutura do Plano de Contas e da DRE na aba '🏛️ Matriz, Filiais & Plano de Contas'."
+                    ),
+                    "detalhe": "Plano de Contas ou DRE não cadastrado"
+                }
+            )
+
         ano_limpo = (ano_destino or "").strip()
         if not ano_limpo:
             ano_limpo = "2026"
@@ -642,12 +660,14 @@ class ContaPlanoCreateRequest(BaseModel):
 @app.get("/api/empresas-plano")
 def listar_empresas_e_plano_contas(empresa_id: Optional[str] = None):
     """
-    Retorna todas as empresas cadastradas (Matriz e Filiais) e o Plano de Contas unificado.
+    Retorna todas as empresas cadastradas (Matriz e Filiais), o Plano de Contas unificado
+    e o status de prontidão para importação de demonstrações financeiras.
     """
     contas_efetivas = empresas_plano_service.obter_plano_contas_efetivo_empresa(empresa_id)
     return {
         "empresas": empresas_plano_service.listar_empresas(),
         "plano_contas": contas_efetivas,
+        "prontidao_importacao": empresas_plano_service.verificar_prontidao_importacao(),
         "plano_efetivo_empresa": {
             "empresa_id": empresa_id or "CONSOLIDADO",
             "contas_efetivas": contas_efetivas
@@ -726,7 +746,8 @@ def cadastrar_conta_plano_endpoint(req: ContaPlanoCreateRequest):
         "status": "sucesso",
         "mensagem": f"Conta '{nova_conta['codigo_contabil']} - {nova_conta['nome_conta']}' cadastrada na Matriz e propagada automaticamente para todas as Filiais!",
         "conta": nova_conta,
-        "plano_contas": empresas_plano_service.obter_plano_contas_efetivo_empresa()
+        "plano_contas": empresas_plano_service.obter_plano_contas_efetivo_empresa(),
+        "prontidao_importacao": empresas_plano_service.verificar_prontidao_importacao()
     }
 
 @app.delete("/api/plano-contas/{conta_id}")
@@ -735,8 +756,70 @@ def excluir_conta_plano_endpoint(conta_id: str):
     return {
         "status": "sucesso" if removido else "erro",
         "removido": removido,
-        "plano_contas": empresas_plano_service.obter_plano_contas_efetivo_empresa()
+        "plano_contas": empresas_plano_service.obter_plano_contas_efetivo_empresa(),
+        "prontidao_importacao": empresas_plano_service.verificar_prontidao_importacao()
     }
+
+@app.post("/api/plano-contas/limpar-tudo")
+def limpar_plano_contas_endpoint():
+    """
+    Remove todas as contas cadastradas do Plano de Contas / DRE para permitir um novo cadastro limpo do zero.
+    """
+    res = empresas_plano_service.limpar_plano_contas_completo()
+    return {
+        **res,
+        "empresas": empresas_plano_service.listar_empresas()
+    }
+
+@app.post("/api/plano-contas/importar-estrutura")
+async def importar_estrutura_plano_contas_endpoint(
+    file: UploadFile = File(...),
+    escopo: Optional[str] = Form("MATRIZ"),
+    tipo_forcar: Optional[str] = Form("AUTO"),
+    limpar_anterior: Optional[str] = Form("false")
+):
+    """
+    Importa e cadastra automaticamente as contas a partir de uma planilha (.xlsx, .xls, .csv) ou PDF:
+    1. Identifica automaticamente a peça contábil ('PLANO_DE_CONTAS', 'DRE' ou 'BALANCO_PATRIMONIAL');
+    2. Higieniza (limpa) todos os saldos numéricos, datas, percentuais e cabeçalhos para deixar a estrutura 100% enxuta;
+    3. Cadastra na Matriz e propaga automaticamente para todas as Filiais e motor JEV.
+    """
+    global ultimo_documento_ativo
+    from fastapi.responses import JSONResponse
+
+    nome_lower = (file.filename or "").lower()
+    if not any(nome_lower.endswith(ext) for ext in (".xlsx", ".xls", ".csv", ".pdf")):
+        return JSONResponse(
+            status_code=400,
+            content={
+                "erro": True,
+                "mensagem": "Formato inválido. Envie uma planilha (.xlsx, .xls, .csv) ou arquivo .pdf para importar a estrutura de contas."
+            }
+        )
+
+    conteudo = await file.read()
+    flag_limpar = str(limpar_anterior or "false").strip().lower() in ("true", "1", "sim", "yes")
+    res = empresas_plano_service.importar_estrutura_contas_enxuta(
+        conteudo_arquivo=conteudo,
+        nome_arquivo=file.filename or "estrutura.xlsx",
+        escopo=(escopo or "MATRIZ").strip().upper(),
+        tipo_forcar=(tipo_forcar or "AUTO").strip().upper(),
+        limpar_anterior=flag_limpar
+    )
+    if res.get("erro"):
+        return JSONResponse(status_code=400, content=res)
+
+    # Se houver documento ativo carregado, re-conglutina imediatamente com o novo Plano de Contas!
+    if ultimo_documento_ativo is not None:
+        contas_todas = ultimo_documento_ativo.get("itens_dre", []) + ultimo_documento_ativo.get("contas_detalhadas", [])
+        if contas_todas:
+            ano_at = ultimo_documento_ativo.get("ano_ativo", "2026")
+            matriz_nova = conglutinador_jev.conglutinar_dados_na_matriz(contas_todas)
+            ultimo_documento_ativo["dre_matriz_empresa"] = matriz_nova
+            if "dre_matriz_por_ano" in ultimo_documento_ativo:
+                ultimo_documento_ativo["dre_matriz_por_ano"][ano_at] = matriz_nova
+
+    return res
 
 @app.post("/api/classificar-conta")
 def classificar_conta(conta: str, descricao: str, saldo: float = None):
