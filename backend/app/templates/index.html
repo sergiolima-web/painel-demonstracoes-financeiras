@@ -87,6 +87,16 @@
       const [msgMapeamento, setMsgMapeamento] = useState('');
       const fileInputRef = useRef(null);
 
+      // Estados da Ferramenta de Rabisco / Anotação na Tela (Pincel, Seta, Marcador, Cores, Borracha)
+      const [modoRabiscoAtivo, setModoRabiscoAtivo] = useState(false);
+      const [ferramentaRabisco, setFerramentaRabisco] = useState('pen'); // 'pen', 'arrow', 'marker', 'rect'
+      const [corRabisco, setCorRabisco] = useState('#ef4444'); // Vermelho padrão
+      const [espessuraRabisco, setEspessuraRabisco] = useState(3);
+      const canvasRef = useRef(null);
+      const [desenhando, setDesenhando] = useState(false);
+      const [pontoInicial, setPontoInicial] = useState(null);
+      const [historicoDesenhos, setHistoricoDesenhos] = useState([]);
+
       // Estados de Autenticação e Proteção Zero Trust na Nuvem
       const [exigeAuth, setExigeAuth] = useState(false);
       const [autenticado, setAutenticado] = useState(true);
@@ -701,6 +711,128 @@
         }
       };
 
+      // Redimensionamento e Ajuste do Canvas de Anotação/Rabisco
+      useEffect(() => {
+        if (!modoRabiscoAtivo) return;
+        const atualizarTamanhoCanvas = () => {
+          const cv = canvasRef.current;
+          if (cv) {
+            const w = document.documentElement.scrollWidth || window.innerWidth;
+            const h = document.documentElement.scrollHeight || window.innerHeight;
+            if (cv.width !== w || cv.height !== h) {
+              const ctx = cv.getContext('2d');
+              const imgData = ctx.getImageData(0, 0, cv.width, cv.height);
+              cv.width = w;
+              cv.height = h;
+              try { ctx.putImageData(imgData, 0, 0); } catch(e){}
+            }
+          }
+        };
+        atualizarTamanhoCanvas();
+        window.addEventListener('resize', atualizarTamanhoCanvas);
+        window.addEventListener('scroll', atualizarTamanhoCanvas);
+        return () => {
+          window.removeEventListener('resize', atualizarTamanhoCanvas);
+          window.removeEventListener('scroll', atualizarTamanhoCanvas);
+        };
+      }, [modoRabiscoAtivo]);
+
+      const iniciarDesenho = (e) => {
+        if (!modoRabiscoAtivo) return;
+        const cv = canvasRef.current;
+        if (!cv) return;
+        const rect = cv.getBoundingClientRect();
+        const x = (e.clientX - rect.left) + window.scrollX;
+        const y = (e.clientY - rect.top) + window.scrollY;
+
+        const ctx = cv.getContext('2d');
+        setDesenhando(true);
+        setPontoInicial({ x, y });
+
+        if (ferramentaRabisco === 'pen' || ferramentaRabisco === 'marker') {
+          ctx.beginPath();
+          ctx.moveTo(x, y);
+          ctx.strokeStyle = corRabisco;
+          ctx.fillStyle = corRabisco;
+          ctx.lineWidth = ferramentaRabisco === 'marker' ? espessuraRabisco * 3.5 : espessuraRabisco;
+          ctx.lineCap = 'round';
+          ctx.lineJoin = 'round';
+          ctx.globalAlpha = ferramentaRabisco === 'marker' ? 0.35 : 1.0;
+        }
+      };
+
+      const desenharMovimento = (e) => {
+        if (!modoRabiscoAtivo || !desenhando) return;
+        const cv = canvasRef.current;
+        if (!cv) return;
+        const rect = cv.getBoundingClientRect();
+        const x = (e.clientX - rect.left) + window.scrollX;
+        const y = (e.clientY - rect.top) + window.scrollY;
+        const ctx = cv.getContext('2d');
+
+        if (ferramentaRabisco === 'pen' || ferramentaRabisco === 'marker') {
+          ctx.lineTo(x, y);
+          ctx.stroke();
+        }
+      };
+
+      const finalizarDesenho = (e) => {
+        if (!modoRabiscoAtivo || !desenhando) return;
+        const cv = canvasRef.current;
+        if (!cv) return;
+        const rect = cv.getBoundingClientRect();
+        const x = (e.clientX - rect.left) + window.scrollX;
+        const y = (e.clientY - rect.top) + window.scrollY;
+        const ctx = cv.getContext('2d');
+
+        if (ferramentaRabisco === 'arrow' && pontoInicial) {
+          desenharSeta(ctx, pontoInicial.x, pontoInicial.y, x, y, corRabisco, espessuraRabisco);
+        } else if (ferramentaRabisco === 'rect' && pontoInicial) {
+          ctx.strokeStyle = corRabisco;
+          ctx.lineWidth = espessuraRabisco;
+          ctx.globalAlpha = 1.0;
+          ctx.strokeRect(pontoInicial.x, pontoInicial.y, x - pontoInicial.x, y - pontoInicial.y);
+        } else if (ferramentaRabisco === 'pen' || ferramentaRabisco === 'marker') {
+          ctx.closePath();
+          ctx.globalAlpha = 1.0;
+        }
+
+        setDesenhando(false);
+        setPontoInicial(null);
+      };
+
+      const desenharSeta = (ctx, fromX, fromY, toX, toY, cor, espessura) => {
+        const headlen = Math.max(12, espessura * 4);
+        const angle = Math.atan2(toY - fromY, toX - fromX);
+        ctx.strokeStyle = cor;
+        ctx.fillStyle = cor;
+        ctx.lineWidth = espessura;
+        ctx.globalAlpha = 1.0;
+        ctx.lineCap = 'round';
+
+        // Linha principal da seta
+        ctx.beginPath();
+        ctx.moveTo(fromX, fromY);
+        ctx.lineTo(toX, toY);
+        ctx.stroke();
+
+        // Cabeça da seta
+        ctx.beginPath();
+        ctx.moveTo(toX, toY);
+        ctx.lineTo(toX - headlen * Math.cos(angle - Math.PI / 6), toY - headlen * Math.sin(angle - Math.PI / 6));
+        ctx.lineTo(toX - headlen * Math.cos(angle + Math.PI / 6), toY - headlen * Math.sin(angle + Math.PI / 6));
+        ctx.closePath();
+        ctx.fill();
+      };
+
+      const limparRabiscos = () => {
+        const cv = canvasRef.current;
+        if (cv) {
+          const ctx = cv.getContext('2d');
+          ctx.clearRect(0, 0, cv.width, cv.height);
+        }
+      };
+
       const periodosLista = [
         { id: '1T', rotulo: '1º Trim (1T)', icone: '🌱' },
         { id: '2T', rotulo: '2º Trim (2T)', icone: '📈' },
@@ -1024,14 +1156,31 @@
                     accept=".xlsx,.xls,.csv,.pdf"
                     className="hidden"
                   />
-                  <button
-                    onClick={() => fileInputRef.current && fileInputRef.current.click()}
-                    disabled={isLoading}
-                    className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-gradient-to-r from-amber-500 via-yellow-500 to-amber-600 hover:brightness-105 active:scale-95 text-slate-950 text-xs font-bold shadow-md shadow-amber-500/20 border border-amber-400/80 transition-all cursor-pointer shrink-0"
-                  >
-                    <span>📁</span>
-                    <span>{isLoading ? 'Analisando JEV...' : 'Importar Arquivo'}</span>
-                  </button>
+                  <div className="relative">
+                    <button
+                      onClick={() => fileInputRef.current && fileInputRef.current.click()}
+                      disabled={isLoading}
+                      className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-gradient-to-r from-amber-500 via-yellow-500 to-amber-600 hover:brightness-105 active:scale-95 text-slate-950 text-xs font-bold shadow-md shadow-amber-500/20 border border-amber-400/80 transition-all cursor-pointer shrink-0"
+                    >
+                      <span>📁</span>
+                      <span>{isLoading ? 'Analisando JEV...' : 'Importar Arquivo'}</span>
+                    </button>
+
+                    {/* Botãozinho Discreto de Ativação do Modo Rabisco/Anotação na Tela */}
+                    <button
+                      type="button"
+                      onClick={() => setModoRabiscoAtivo(!modoRabiscoAtivo)}
+                      className={`absolute -bottom-6 right-0 text-[10px] font-bold px-2 py-0.5 rounded-md border shadow-sm transition-all flex items-center gap-1 whitespace-nowrap cursor-pointer ${
+                        modoRabiscoAtivo
+                          ? 'bg-rose-600 text-white border-rose-700 animate-pulse'
+                          : 'bg-white hover:bg-slate-100 text-slate-700 border-slate-300'
+                      }`}
+                      title="Ativar/Desativar Caixinha de Ferramentas de Desenho (Lápis, Seta, Marcador, Cores)"
+                    >
+                      <span>✏️</span>
+                      <span>{modoRabiscoAtivo ? 'Fechar Rabisco' : 'Anotar Tela'}</span>
+                    </button>
+                  </div>
                 </div>
               </div>
 
@@ -3315,6 +3464,159 @@
             periodoAtivo={periodoAtivo}
             modaisAbertos={processandoModal || modalPreImportacao || modalMapeamento}
           />
+
+          {/* Camada Transparente de Rabisco / Anotação Sobreposta na Tela */}
+          {modoRabiscoAtivo && (
+            <canvas
+              ref={canvasRef}
+              onMouseDown={iniciarDesenho}
+              onMouseMove={desenharMovimento}
+              onMouseUp={finalizarDesenho}
+              className="absolute inset-0 z-40 cursor-crosshair"
+              style={{ pointerEvents: 'auto' }}
+            />
+          )}
+
+          {/* Caixinha Flutuante de Ferramentas de Desenho (Lápis, Seta, Marcador, Retângulo, Cores, Limpar) */}
+          {modoRabiscoAtivo && (
+            <div className="fixed top-20 right-8 z-50 bg-slate-900/95 backdrop-blur-md border-2 border-amber-400 text-white p-3 rounded-2xl shadow-2xl space-y-3 animate-in fade-in zoom-in-95 duration-150 select-none">
+              <div className="flex items-center justify-between gap-3 border-b border-slate-700 pb-2">
+                <span className="text-xs font-black text-amber-400 flex items-center gap-1.5">
+                  <span>🎨</span>
+                  <span>Caixa de Rabisco na Tela</span>
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setModoRabiscoAtivo(false)}
+                  className="text-slate-400 hover:text-white font-bold text-xs p-1"
+                  title="Fechar modo rabisco"
+                >
+                  ✕
+                </button>
+              </div>
+
+              {/* Ferramentas: Lápis, Seta, Marcador, Retângulo */}
+              <div className="grid grid-cols-4 gap-1.5 bg-slate-950 p-1.5 rounded-xl border border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setFerramentaRabisco('pen')}
+                  className={`p-1.5 rounded-lg text-xs font-bold transition-all flex flex-col items-center gap-1 ${
+                    ferramentaRabisco === 'pen'
+                      ? 'bg-amber-500 text-slate-950 shadow-md font-black'
+                      : 'hover:bg-slate-800 text-slate-300'
+                  }`}
+                  title="Lápis livre para circular ou rabiscar"
+                >
+                  <span>✏️</span>
+                  <span className="text-[9px]">Lápis</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setFerramentaRabisco('arrow')}
+                  className={`p-1.5 rounded-lg text-xs font-bold transition-all flex flex-col items-center gap-1 ${
+                    ferramentaRabisco === 'arrow'
+                      ? 'bg-amber-500 text-slate-950 shadow-md font-black'
+                      : 'hover:bg-slate-800 text-slate-300'
+                  }`}
+                  title="Seta apontadora para indicar onde mudar"
+                >
+                  <span>↗️</span>
+                  <span className="text-[9px]">Seta</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setFerramentaRabisco('marker')}
+                  className={`p-1.5 rounded-lg text-xs font-bold transition-all flex flex-col items-center gap-1 ${
+                    ferramentaRabisco === 'marker'
+                      ? 'bg-amber-500 text-slate-950 shadow-md font-black'
+                      : 'hover:bg-slate-800 text-slate-300'
+                  }`}
+                  title="Marca-texto semitransparente"
+                >
+                  <span>🖍️</span>
+                  <span className="text-[9px]">Marca</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setFerramentaRabisco('rect')}
+                  className={`p-1.5 rounded-lg text-xs font-bold transition-all flex flex-col items-center gap-1 ${
+                    ferramentaRabisco === 'rect'
+                      ? 'bg-amber-500 text-slate-950 shadow-md font-black'
+                      : 'hover:bg-slate-800 text-slate-300'
+                  }`}
+                  title="Retângulo / Caixa de Seleção"
+                >
+                  <span>🔲</span>
+                  <span className="text-[9px]">Caixa</span>
+                </button>
+              </div>
+
+              {/* Cores */}
+              <div className="space-y-1">
+                <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">Cores do Traço:</span>
+                <div className="flex items-center gap-1.5">
+                  {[
+                    { id: '#ef4444', label: 'Vermelho' },
+                    { id: '#f59e0b', label: 'Amarelo' },
+                    { id: '#10b981', label: 'Verde' },
+                    { id: '#3b82f6', label: 'Azul' },
+                    { id: '#ec4899', label: 'Rosa' },
+                    { id: '#ffffff', label: 'Branco' }
+                  ].map((c) => (
+                    <button
+                      key={c.id}
+                      type="button"
+                      onClick={() => setCorRabisco(c.id)}
+                      className={`w-6 h-6 rounded-full border-2 transition-transform cursor-pointer ${
+                        corRabisco === c.id ? 'scale-125 border-white ring-2 ring-amber-400' : 'border-transparent hover:scale-110'
+                      }`}
+                      style={{ backgroundColor: c.id }}
+                      title={c.label}
+                    />
+                  ))}
+                </div>
+              </div>
+
+              {/* Espessura */}
+              <div className="flex items-center justify-between text-[10px] text-slate-300 pt-1 border-t border-slate-800">
+                <span>Espessura:</span>
+                <div className="flex items-center gap-1">
+                  {[2, 4, 7].map((esp) => (
+                    <button
+                      key={esp}
+                      type="button"
+                      onClick={() => setEspessuraRabisco(esp)}
+                      className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                        espessuraRabisco === esp ? 'bg-amber-500 text-slate-950 font-black' : 'bg-slate-800 text-slate-300'
+                      }`}
+                    >
+                      {esp === 2 ? 'Fina' : esp === 4 ? 'Média' : 'Grossa'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Ações: Limpar Tela e Instrução de Print */}
+              <div className="pt-2 border-t border-slate-800 flex items-center justify-between gap-2">
+                <button
+                  type="button"
+                  onClick={limparRabiscos}
+                  className="px-2.5 py-1.5 rounded-lg bg-rose-600/30 hover:bg-rose-600/50 text-rose-300 border border-rose-500/40 text-[10px] font-bold transition-all flex items-center gap-1"
+                  title="Apagar todos os rabiscos da tela"
+                >
+                  <span>🧹</span>
+                  <span>Limpar Tela</span>
+                </button>
+
+                <span className="text-[9px] text-slate-400 italic">
+                  Rabesque e aperte PrintScreen 📸
+                </span>
+              </div>
+            </div>
+          )}
 
         </div>
       );
