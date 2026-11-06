@@ -281,12 +281,18 @@ def _extrair_linhas_texto_pagina(page, page_idx: int) -> List[Dict[str, Any]]:
                 })
     return itens
 
-def processar_pdf_demonstracoes_com_jev(conteudo_pdf: bytes, nome_arquivo: str) -> Dict[str, Any]:
+def processar_pdf_demonstracoes_com_jev(
+    conteudo_pdf: bytes,
+    nome_arquivo: str,
+    ano_destino: Optional[str] = "2026",
+    trimestres_permitidos: Optional[List[str]] = None
+) -> Dict[str, Any]:
     """
     Processa um arquivo PDF de Demonstrações Contábeis (Balanço e DRE),
     extrai as contas com Padrão Zero Trust, classifica com JEV TypeSafe AI
     e consolida os índices financeiros e tese para acionistas.
     """
+    ano_alvo = (ano_destino or "2026").strip()
     temp_dir = tempfile.gettempdir()
     nome_seguro = f"contabil_{uuid.uuid4().hex}.pdf"
     temp_path = os.path.join(temp_dir, nome_seguro)
@@ -571,8 +577,8 @@ def processar_pdf_demonstracoes_com_jev(conteudo_pdf: bytes, nome_arquivo: str) 
             diferenca_balanco = round(ativo_total - passivo_total, 2)
             balanco_equilibrado = abs(diferenca_balanco) < 100.0
 
-            # Matrizes DRE e Totais independentes por ano
-            anos_pdf = ["2024", "2023"]
+            # Matrizes DRE e Totais independentes por ano (Garante sempre 2026, 2025, 2024, 2023)
+            anos_pdf = sorted(list({"2026", "2025", "2024", "2023", ano_alvo}), reverse=True)
             dre_matriz_por_ano = {}
             totais_balanco_por_ano = {}
             totais_dre_por_ano = {}
@@ -580,10 +586,10 @@ def processar_pdf_demonstracoes_com_jev(conteudo_pdf: bytes, nome_arquivo: str) 
             for ano_k in anos_pdf:
                 contas_k = []
                 for c in (itens_dre + contas_processadas):
-                    s_k = c.get("saldo_atual", 0.0) if ano_k == "2024" else c.get("saldo_anterior", 0.0)
+                    s_k = c.get("saldo_atual", 0.0) if ano_k == ano_alvo else 0.0
                     c_copia = dict(c)
                     c_copia["saldo_atual"] = s_k
-                    if ano_k == "2024":
+                    if ano_k == ano_alvo:
                         c_copia["saldos_trimestrais"] = c.get("saldos_trimestrais", {})
                     else:
                         c_copia["saldos_trimestrais"] = {"1T": 0.0, "2T": 0.0, "3T": 0.0, "4T": 0.0, "anual": s_k}
@@ -597,21 +603,21 @@ def processar_pdf_demonstracoes_com_jev(conteudo_pdf: bytes, nome_arquivo: str) 
                     "lucro_liquido": lucro_k
                 }
 
-                if ano_k == "2024":
+                if ano_k == ano_alvo:
                     totais_balanco_por_ano[ano_k] = totais_balanco
                 else:
                     totais_balanco_por_ano[ano_k] = {
-                        "ativo_circulante": ac_ant,
-                        "ativo_nao_circulante": anc_ant,
-                        "ativo_total": (ac_ant + anc_ant),
-                        "passivo_circulante": pc_ant,
-                        "passivo_nao_circulante": pnc_ant,
-                        "patrimonio_liquido": pl_ant,
-                        "passivo_total": (pc_ant + pnc_ant + pl_ant) if (pc_ant + pnc_ant + pl_ant) > 0 else (pc_ant + pnc_ant),
-                        "disponibilidades": disp_ant
+                        "ativo_circulante": 0.0,
+                        "ativo_nao_circulante": 0.0,
+                        "ativo_total": 0.0,
+                        "passivo_circulante": 0.0,
+                        "passivo_nao_circulante": 0.0,
+                        "patrimonio_liquido": 0.0,
+                        "passivo_total": 0.0,
+                        "disponibilidades": 0.0
                     }
 
-            dre_matriz_empresa = dre_matriz_por_ano.get("2024") or conglutinador_jev.conglutinar_dados_na_matriz(itens_dre + contas_processadas)
+            dre_matriz_empresa = dre_matriz_por_ano.get(ano_alvo) or conglutinador_jev.conglutinar_dados_na_matriz(itens_dre + contas_processadas)
 
             return {
                 "arquivo": nome_arquivo,
@@ -627,7 +633,7 @@ def processar_pdf_demonstracoes_com_jev(conteudo_pdf: bytes, nome_arquivo: str) 
                 "indices_financeiros": indices_anual,
                 "indicadores_por_periodo": indicadores_por_periodo,
                 "anos_disponiveis": anos_pdf,
-                "ano_ativo": "2024",
+                "ano_ativo": ano_alvo,
                 "indicadores_por_ano": indicadores_por_ano,
                 "parecer_gestao_jev": parecer_gestao_jev,
                 "dre_matriz_empresa": dre_matriz_empresa,

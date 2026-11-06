@@ -587,6 +587,9 @@ def processar_demonstracoes_com_jev(
                         continue
 
                     if chave_conta not in mapa_contas_unificadas:
+                        saldos_anuais_init = {a: 0.0 for a in ["2026", "2025", "2024", "2023"]}
+                        if not ano_destino and saldo_ant_bloco != 0:
+                            saldos_anuais_init[ano_secundario] = saldo_ant_bloco
                         mapa_contas_unificadas[chave_conta] = {
                             "codigo": codigo_str,
                             "conta": desc_raw,
@@ -599,7 +602,7 @@ def processar_demonstracoes_com_jev(
                                 "4T": 0.0,
                                 "anual": 0.0
                             },
-                            "saldos_anuais": {ano_principal: 0.0, ano_secundario: 0.0 if ano_destino else saldo_ant_bloco}
+                            "saldos_anuais": saldos_anuais_init
                         }
 
                     # Aloca o saldo estritamente no trimestre autorizado
@@ -961,22 +964,12 @@ def processar_demonstracoes_com_jev(
         )
 
     # 5.1 Identificação e Cálculo de Múltiplos Anos (Exercícios Financeiros)
-    # Garante sempre a presença dos exercícios base (2026, 2025, 2024, 2023) para que nenhum ano suma ao importar
+    # Garante sempre a presença dos exercícios oficiais (2026, 2025, 2024, 2023) para que nenhum ano suma ao importar
     anos_set = {"2026", "2025", "2024", "2023"}
-    if ano_principal:
+    if ano_principal and str(ano_principal).isdigit() and 2020 <= int(ano_principal) <= 2035:
         anos_set.add(str(ano_principal))
-    if ano_secundario:
-        anos_set.add(str(ano_secundario))
-    for c in contas_processadas:
-        anos_set.update(c.get("saldos_anuais", {}).keys())
-    for it in itens_dre:
-        anos_set.update(it.get("saldos_anuais", {}).keys())
-    if anos_relatorio:
-        anos_set.update(anos_relatorio)
 
     anos_disponiveis = sorted(list(anos_set), reverse=True)
-    if ano_principal not in anos_disponiveis:
-        anos_disponiveis = [ano_principal] + [a for a in anos_disponiveis if a != ano_principal]
 
     diferenca_balanco = round(abs(ativo_total - passivo_total), 2)
     balanco_equilibrado = diferenca_balanco < 100.0 or somente_dre

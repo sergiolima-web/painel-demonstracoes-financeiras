@@ -23,34 +23,35 @@ from starlette.responses import Response, JSONResponse
 class InMemoryRateLimiter:
     """
     Controla a frequência de requisições por IP cliente.
-    Possui bypass automático para suíte de testes (testclient).
+    Possui bypass automático para suíte de testes (testclient) e separa buckets de leitura e escrita.
     """
-    def __init__(self, limite_padrao_minuto: int = 120, limite_sensivel_minuto: int = 30):
+    def __init__(self, limite_padrao_minuto: int = 300, limite_sensivel_minuto: int = 60):
         self.limite_padrao = limite_padrao_minuto
         self.limite_sensivel = limite_sensivel_minuto
         self.historico_ips: Dict[str, List[float]] = {}
 
     def verificar_limite(self, request: Request, eh_rota_sensivel: bool = False) -> Tuple[bool, int]:
-        # 1. Bypass mandatória apontada pelo Goldfish para não quebrar a suíte de testes
+        # 1. Bypass mandatória apontada pelo Goldfish para não quebrar a suíte de testes (testclient)
         client_ip = request.client.host if request.client else "unknown"
-        if client_ip in ["testclient", "127.0.0.1", "localhost"] and os.getenv("TESTING", "").lower() == "true":
+        if client_ip == "testclient" or os.getenv("TESTING", "").lower() == "true":
             return True, 0
 
+        chave_bucket = f"{client_ip}:sensivel" if eh_rota_sensivel else f"{client_ip}:padrao"
         limite = self.limite_sensivel if eh_rota_sensivel else self.limite_padrao
         agora = time.time()
         janela = agora - 60.0  # Janela de 1 minuto
 
         # Limpa requisições mais antigas que 1 minuto
-        if client_ip not in self.historico_ips:
-            self.historico_ips[client_ip] = []
+        if chave_bucket not in self.historico_ips:
+            self.historico_ips[chave_bucket] = []
 
-        self.historico_ips[client_ip] = [t for t in self.historico_ips[client_ip] if t > janela]
+        self.historico_ips[chave_bucket] = [t for t in self.historico_ips[chave_bucket] if t > janela]
 
-        if len(self.historico_ips[client_ip]) >= limite:
-            tempo_espera = int(60.0 - (agora - self.historico_ips[client_ip][0]))
+        if len(self.historico_ips[chave_bucket]) >= limite:
+            tempo_espera = int(60.0 - (agora - self.historico_ips[chave_bucket][0]))
             return False, max(1, tempo_espera)
 
-        self.historico_ips[client_ip].append(agora)
+        self.historico_ips[chave_bucket].append(agora)
         return True, 0
 
 rate_limiter = InMemoryRateLimiter()

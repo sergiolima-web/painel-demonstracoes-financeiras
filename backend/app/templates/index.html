@@ -235,7 +235,8 @@
         const file = e.target.files[0];
         setArquivoPendente(file);
         setErroValidacaoImportacao('');
-        const anoSugerido = (anoAtivo && anoAtivo !== 'todos_anos') ? anoAtivo : (data?.anos_disponiveis?.[0] || '2026');
+        const matchAnoNome = (file.name || '').match(/\b(202[3-9])\b/);
+        const anoSugerido = matchAnoNome ? matchAnoNome[1] : ((anoAtivo && anoAtivo !== 'todos_anos') ? anoAtivo : '2026');
         setAnoImportacao(anoSugerido);
         setNovoAnoCustom('');
         
@@ -951,7 +952,7 @@
 
               {/* Barra de Filtros: Exercício (Anos) e Período (Trimestres) Lado a Lado */}
               <div className="py-2 border-t border-slate-200 flex items-center gap-3 overflow-x-auto">
-                {/* Seletor de Exercício / Anos em Lista Suspensa */}
+                {/* Seletor de Exercício / Anos em Lista Suspensa + Botões Rápidos Fixos (2026, 2025, 2024, 2023) */}
                 <div className="flex items-center gap-2 shrink-0">
                   <label htmlFor="select-ano" className="text-cyan-800 font-bold text-xs flex items-center gap-1 whitespace-nowrap cursor-pointer">
                     <span>🏛️</span>
@@ -974,6 +975,37 @@
                     <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2.5 text-slate-500 text-[10px]">
                       ▼
                     </div>
+                  </div>
+
+                  {/* Botões Rápidos de Anos Sempre Visíveis (2026, 2025, 2024, 2023) */}
+                  <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200">
+                    <button
+                      type="button"
+                      onClick={() => setAnoAtivo('todos_anos')}
+                      className={`px-2 py-1 text-[11px] font-bold rounded-lg transition-all whitespace-nowrap cursor-pointer ${
+                        anoAtivo === 'todos_anos'
+                          ? 'bg-cyan-600 text-white shadow-sm'
+                          : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200'
+                      }`}
+                      title="Comparativo Todos os Anos (2026, 2025, 2024, 2023)"
+                    >
+                      🌐 Todos
+                    </button>
+                    {anosDisponiveis.map((ano) => (
+                      <button
+                        key={ano}
+                        type="button"
+                        onClick={() => setAnoAtivo(ano)}
+                        className={`px-2 py-1 text-[11px] font-bold rounded-lg transition-all whitespace-nowrap cursor-pointer ${
+                          anoAtivo === ano
+                            ? 'bg-cyan-600 text-white shadow-sm'
+                            : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200'
+                        }`}
+                        title={`Visualizar Exercício ${ano}`}
+                      >
+                        {ano}
+                      </button>
+                    ))}
                   </div>
                 </div>
 

@@ -470,6 +470,55 @@ def test_cadastro_matriz_filiais_e_propagacao_plano_contas():
     client.post("/api/banco-dados/expurgar-tudo")
 
 
+def test_importar_dre_2026_preserva_2023_2024_2025_2026():
+    """
+    Garante que ao importar uma planilha de DRE para o ano de 2026 (mesmo que o arquivo
+    contenha datas internas de 2024), os anos 2023, 2024, 2025 e 2026 JAMAIS sumam
+    da lista anos_disponiveis ou dos dicionários dre_matriz_por_ano e totais_dre_por_ano.
+    """
+    client.post("/api/banco-dados/expurgar-tudo")
+
+    # 1. Importa DRE para 2025
+    csv_dre_2025 = (
+        "Código;Conta;Saldo 2025\n"
+        "3.01.01;Vendas de Mercadorias;1200000,00\n"
+        "4.01.01;Custo de Mercadoria Vendida;-400000,00\n"
+    )
+    resp_2025 = client.post(
+        "/api/upload-demonstracao",
+        files={"file": ("dre_2025.csv", io.BytesIO(csv_dre_2025.encode("utf-8")), "text/csv")},
+        data={"ano_destino": "2025", "trimestres_autorizados": '["1T","2T","3T","4T"]'}
+    )
+    assert resp_2025.status_code == 200
+
+    # 2. Importa DRE para 2026 (com cabeçalho interno citando 2024 para testar imunidade)
+    csv_dre_2026 = (
+        "Código;Conta;Saldo 2024\n"
+        "3.01.01;Vendas de Mercadorias;2500000,00\n"
+        "4.01.01;Custo de Mercadoria Vendida;-800000,00\n"
+    )
+    resp_2026 = client.post(
+        "/api/upload-demonstracao",
+        files={"file": ("dre_2026.csv", io.BytesIO(csv_dre_2026.encode("utf-8")), "text/csv")},
+        data={"ano_destino": "2026", "trimestres_autorizados": '["1T","2T","3T","4T"]'}
+    )
+    assert resp_2026.status_code == 200
+    dados = resp_2026.json()
+
+    # Todos os 4 anos (2026, 2025, 2024, 2023) devem estar presentes e na ordem correta
+    assert dados["anos_disponiveis"] == ["2026", "2025", "2024", "2023"]
+    assert dados["ano_ativo"] == "2026"
+
+    # Os valores de 2026 foram gravados em 2026 e os de 2025 permaneceram intactos em 2025!
+    assert dados["totais_dre_por_ano"]["2026"]["receita_bruta"] == 2500000.0
+    assert dados["totais_dre_por_ano"]["2025"]["receita_bruta"] == 1200000.0
+    assert "2024" in dados["dre_matriz_por_ano"]
+    assert "2023" in dados["dre_matriz_por_ano"]
+
+    client.post("/api/banco-dados/expurgar-tudo")
+
+
+
 
 
 

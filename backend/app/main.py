@@ -525,8 +525,16 @@ async def upload_demonstracao(
                 }
             )
 
+        if ultimo_documento_ativo is None:
+            ultimo_documento_ativo = _criar_documento_zerado_limpo()
+
         if nome_lower.endswith(".pdf") or file.content_type == "application/pdf":
-            resultado = processar_pdf_demonstracoes_com_jev(conteudo, file.filename)
+            resultado = processar_pdf_demonstracoes_com_jev(
+                conteudo,
+                file.filename,
+                ano_destino=ano_limpo,
+                trimestres_permitidos=trimestres_lista
+            )
         else:
             resultado = processar_demonstracoes_com_jev(
                 conteudo,
@@ -535,21 +543,59 @@ async def upload_demonstracao(
                 trimestres_permitidos=trimestres_lista
             )
 
-        # FUSÃO MULTI-EXERCÍCIO (Preserva dados de outros anos já importados na sessão!)
-        if ultimo_documento_ativo is not None:
-            anos_unificados = set(ultimo_documento_ativo.get("anos_disponiveis", []))
-            anos_unificados.update(resultado.get("anos_disponiveis", []))
-            anos_unificados.update(["2026", "2025", "2024", "2023", ano_limpo])
-            resultado["anos_disponiveis"] = sorted(list(anos_unificados), reverse=True)
+        # FUSÃO MULTI-EXERCÍCIO E MULTI-DEMONSTRAÇÃO (Preserva 2026, 2025, 2024, 2023 sem jamais apagar outros anos!)
+        anos_unificados = set(ultimo_documento_ativo.get("anos_disponiveis", []))
+        anos_unificados.update(resultado.get("anos_disponiveis", []))
+        anos_unificados.update(["2026", "2025", "2024", "2023", ano_limpo])
+        resultado["anos_disponiveis"] = sorted(
+            [a for a in anos_unificados if str(a).isdigit() and 2020 <= int(a) <= 2035],
+            reverse=True
+        )
+        resultado["ano_ativo"] = ano_limpo
 
-            # Preserva os dicionários por ano dos outros exercícios que não são o ano_limpo importado agora
-            for dict_key in ["dre_matriz_por_ano", "totais_balanco_por_ano", "totais_dre_por_ano", "indicadores_por_ano"]:
-                antigo_map = ultimo_documento_ativo.get(dict_key, {})
-                novo_map = resultado.get(dict_key, {})
-                for ano_ant, val_ant in antigo_map.items():
-                    if ano_ant != ano_limpo:
+        eh_somente_dre = bool(resultado.get("somente_dre")) or (len(resultado.get("itens_dre", [])) > 0 and len(resultado.get("contas_detalhadas", [])) == 0)
+        eh_somente_balanco = len(resultado.get("contas_detalhadas", [])) > 0 and len(resultado.get("itens_dre", [])) == 0
+
+        # 1. Preserva os dicionários por ano dos outros exercícios (e preserva Balanço se subiu só DRE, ou DRE se subiu só Balanço)
+        for dict_key in ["dre_matriz_por_ano", "totais_balanco_por_ano", "totais_dre_por_ano", "indicadores_por_ano"]:
+            antigo_map = ultimo_documento_ativo.get(dict_key, {})
+            novo_map = resultado.get(dict_key, {})
+            for ano_ant, val_ant in antigo_map.items():
+                if ano_ant != ano_limpo:
+                    novo_map[ano_ant] = val_ant
+                else:
+                    # Mesmo ano: se subiu somente DRE, preserva o Balanço que já estava carregado para este ano
+                    if eh_somente_dre and dict_key == "totais_balanco_por_ano" and val_ant.get("ativo_total", 0) > 0:
                         novo_map[ano_ant] = val_ant
-                resultado[dict_key] = novo_map
+                    # Mesmo ano: se subiu somente Balanço, preserva a DRE que já estava carregada para este ano
+                    elif eh_somente_balanco and dict_key in ("dre_matriz_por_ano", "totais_dre_por_ano"):
+                        novo_map[ano_ant] = val_ant
+            resultado[dict_key] = novo_map
+
+        # 2. Mescla saldos_anuais em itens_dre e contas_detalhadas para que todas as abas mantenham 2023, 2024, 2025 e 2026
+        if eh_somente_dre and not resultado.get("contas_detalhadas") and ultimo_documento_ativo.get("contas_detalhadas"):
+            resultado["contas_detalhadas"] = ultimo_documento_ativo["contas_detalhadas"]
+            resultado["totais_balanco"] = ultimo_documento_ativo.get("totais_balanco", resultado.get("totais_balanco"))
+        elif eh_somente_balanco and not resultado.get("itens_dre") and ultimo_documento_ativo.get("itens_dre"):
+            resultado["itens_dre"] = ultimo_documento_ativo["itens_dre"]
+            resultado["totais_dre"] = ultimo_documento_ativo.get("totais_dre", resultado.get("totais_dre"))
+            resultado["dre_matriz_empresa"] = ultimo_documento_ativo.get("dre_matriz_empresa", resultado.get("dre_matriz_empresa"))
+
+        # Preserva saldos_anuais de outros anos dentro de itens_dre
+        antigos_dre_map = {
+            f"{it.get('codigo', '')}_{it.get('conta', '')}": it
+            for it in ultimo_documento_ativo.get("itens_dre", [])
+        }
+        for it_novo in resultado.get("itens_dre", []):
+            chave_it = f"{it_novo.get('codigo', '')}_{it_novo.get('conta', '')}"
+            saldos_anuais_it = it_novo.setdefault("saldos_anuais", {})
+            for a_fixo in resultado["anos_disponiveis"]:
+                saldos_anuais_it.setdefault(a_fixo, 0.0)
+            if chave_it in antigos_dre_map:
+                ant_saldos = antigos_dre_map[chave_it].get("saldos_anuais", {})
+                for a_ant, v_ant in ant_saldos.items():
+                    if a_ant != ano_limpo and v_ant != 0:
+                        saldos_anuais_it[a_ant] = v_ant
 
         ultimo_documento_ativo = resultado
         return resultado
