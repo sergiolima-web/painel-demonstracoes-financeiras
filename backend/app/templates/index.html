@@ -439,27 +439,33 @@
         : data?.dre_matriz_empresa;
 
       // Balanço Patrimonial isolado por ano (sem fallback contaminante de outro ano)
-      const totaisBalancoAno = (anoAtivo !== 'todos_anos')
-        ? (data?.totais_balanco_por_ano?.[anoAtivo] || {
-            ativo_circulante: 0,
-            ativo_nao_circulante: 0,
-            ativo_total: 0,
-            passivo_circulante: 0,
-            passivo_nao_circulante: 0,
-            patrimonio_liquido: 0,
-            passivo_total: 0,
-            disponibilidades: 0
-          })
-        : (data?.totais_balanco || {
-            ativo_circulante: 0,
-            ativo_nao_circulante: 0,
-            ativo_total: 0,
-            passivo_circulante: 0,
-            passivo_nao_circulante: 0,
-            patrimonio_liquido: 0,
-            passivo_total: 0,
-            disponibilidades: 0
-          });
+      let totaisBalancoAno;
+      if (anoAtivo === 'todos_anos') {
+        const anosLista = data?.anos_disponiveis || [];
+        if (anosLista.length > 0 && data?.totais_balanco_por_ano) {
+          const somaAtivo = anosLista.reduce((acc, a) => acc + (data.totais_balanco_por_ano[a]?.ativo_total || 0), 0);
+          const somaPassivo = anosLista.reduce((acc, a) => acc + (data.totais_balanco_por_ano[a]?.passivo_total || 0), 0);
+          const somaPL = anosLista.reduce((acc, a) => acc + (data.totais_balanco_por_ano[a]?.patrimonio_liquido || 0), 0);
+          totaisBalancoAno = {
+            ativo_total: somaAtivo,
+            passivo_total: somaPassivo,
+            patrimonio_liquido: somaPL
+          };
+        } else {
+          totaisBalancoAno = data?.totais_balanco || { ativo_total: 0, passivo_total: 0, patrimonio_liquido: 0 };
+        }
+      } else {
+        totaisBalancoAno = data?.totais_balanco_por_ano?.[anoAtivo] || {
+          ativo_circulante: 0,
+          ativo_nao_circulante: 0,
+          ativo_total: 0,
+          passivo_circulante: 0,
+          passivo_nao_circulante: 0,
+          patrimonio_liquido: 0,
+          passivo_total: 0,
+          disponibilidades: 0
+        };
+      }
 
       const totaisDreAno = (anoAtivo !== 'todos_anos')
         ? (data?.totais_dre_por_ano?.[anoAtivo] || { receita_bruta: 0, lucro_liquido: 0 })
@@ -472,11 +478,17 @@
       let lucroPeriodo = 0;
 
       if (anoAtivo === 'todos_anos') {
-        const valoresRec = Object.values(data?.totais_dre_por_ano || {}).map(t => t.receita_bruta || 0);
-        receitaPeriodo = valoresRec.length > 0 ? valoresRec.reduce((a, b) => a + b, 0) : (data?.totais_dre?.receita_bruta || 0);
+        const anosLista = data?.anos_disponiveis || [];
+        if (anosLista.length > 0 && data?.totais_dre_por_ano) {
+          receitaPeriodo = anosLista.reduce((acc, a) => acc + (data.totais_dre_por_ano[a]?.receita_bruta || 0), 0);
+          lucroPeriodo = anosLista.reduce((acc, a) => acc + (data.totais_dre_por_ano[a]?.lucro_liquido || 0), 0);
+        } else {
+          const valoresRec = Object.values(data?.totais_dre_por_ano || {}).map(t => t.receita_bruta || 0);
+          receitaPeriodo = valoresRec.length > 0 ? valoresRec.reduce((a, b) => a + b, 0) : (data?.totais_dre?.receita_bruta || 0);
 
-        const valoresLucro = Object.values(data?.totais_dre_por_ano || {}).map(t => t.lucro_liquido || 0);
-        lucroPeriodo = valoresLucro.length > 0 ? valoresLucro.reduce((a, b) => a + b, 0) : (data?.totais_dre?.lucro_liquido || 0);
+          const valoresLucro = Object.values(data?.totais_dre_por_ano || {}).map(t => t.lucro_liquido || 0);
+          lucroPeriodo = valoresLucro.length > 0 ? valoresLucro.reduce((a, b) => a + b, 0) : (data?.totais_dre?.lucro_liquido || 0);
+        }
       } else {
         if (linhaRecBruta) {
           if (periodoAtivo === '1T') receitaPeriodo = linhaRecBruta.val_1t || 0;
@@ -500,7 +512,7 @@
       }
 
       const ativoTotal = totaisBalancoAno?.ativo_total || 0;
-      const passivoTotal = (totaisBalancoAno?.passivo_total !== undefined && totaisBalancoAno?.passivo_total !== null && totaisBalancoAno?.passivo_total !== 0)
+      const passivoTotal = (totaisBalancoAno?.passivo_total !== undefined && totaisBalancoAno?.passivo_total !== null)
         ? totaisBalancoAno.passivo_total
         : ((totaisBalancoAno?.passivo_circulante || 0) + (totaisBalancoAno?.passivo_nao_circulante || 0));
       const plTotal = totaisBalancoAno?.patrimonio_liquido || 0;

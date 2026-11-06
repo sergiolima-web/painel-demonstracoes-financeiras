@@ -316,6 +316,55 @@ def test_rate_limiter_bloqueio_flood():
     assert permitido3 is False
     assert espera > 0
 
+def test_limpar_dados_todos_os_anos_zera_globalmente():
+    """
+    Homologa a correção de governança contábil:
+    Ao solicitar zeramento com ano='todos_anos' ou trimestre='todos',
+    absolutamente TODOS os exercícios (2026, 2025, etc.) e consolidados devem ir para 0.0,
+    impedindo que valores de anos secundários retornem ou contaminem a visão.
+    """
+    # 1. Reseta para os dados padrão
+    client.post("/api/resetar-dados-padrao")
+    
+    # 2. Executa a limpeza total em todos os anos
+    resp = client.post("/api/limpar-dados", json={
+        "trimestre": "todos",
+        "ano": "todos_anos"
+    })
+    assert resp.status_code == 200
+    dados = resp.json()["dados_atualizados"]
+    
+    # 3. Verifica consolidados
+    assert dados["totais_dre"]["receita_bruta"] == 0.0
+    assert dados["totais_dre"]["lucro_liquido"] == 0.0
+    assert dados["totais_balanco"]["ativo_total"] == 0.0
+    assert dados["totais_balanco"]["passivo_total"] == 0.0
+    assert dados["totais_balanco"]["patrimonio_liquido"] == 0.0
+    
+    # 4. Verifica cada exercício individualmente (incluindo 2025 que antes persistia)
+    for ano in dados.get("anos_disponiveis", ["2026", "2025"]):
+        assert dados["totais_dre_por_ano"][ano]["receita_bruta"] == 0.0
+        assert dados["totais_dre_por_ano"][ano]["lucro_liquido"] == 0.0
+        assert dados["totais_balanco_por_ano"][ano]["ativo_total"] == 0.0
+        assert dados["totais_balanco_por_ano"][ano]["patrimonio_liquido"] == 0.0
+
+def test_limpar_dados_trimestre_individual_recalcula():
+    """Valida a limpeza cirúrgica de um único trimestre e seu recálculo instantâneo."""
+    client.post("/api/resetar-dados-padrao")
+    
+    resp = client.post("/api/limpar-dados", json={
+        "trimestre": "1T",
+        "ano": "2026"
+    })
+    assert resp.status_code == 200
+    dados = resp.json()["dados_atualizados"]
+    matriz_2026 = dados["dre_matriz_por_ano"]["2026"]
+    
+    # Verifica que as rubricas do 1T na matriz foram zeradas
+    for linha in matriz_2026.get("linhas", []):
+        assert linha.get("val_1t", 0.0) == 0.0
+
+
 
 
 

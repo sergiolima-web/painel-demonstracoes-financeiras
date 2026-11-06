@@ -179,16 +179,16 @@ def baixar_modelo_pdf():
 
 @app.get("/api/dados-demonstracao-padrao")
 def obter_dados_padrao(_auth: bool = Depends(verificar_token_acesso)):
-
     """
     Retorna o documento ativo atual (último arquivo importado) ou a demonstração de exemplo caso nenhum tenha sido carregado.
-    Re-conglutina na matriz corporativa para refletir imediatamente novas regras do JEV.
+    Preserva rigorosamente os estados de zeramento e cálculos já realizados na sessão.
     """
     global ultimo_documento_ativo
     if ultimo_documento_ativo is not None:
-        contas = ultimo_documento_ativo.get("contas_detalhadas", [])
-        if contas:
-            ultimo_documento_ativo["dre_matriz_empresa"] = conglutinador_jev.conglutinar_dados_na_matriz(contas)
+        contas = ultimo_documento_ativo.get("contas_detalhadas", []) + ultimo_documento_ativo.get("itens_dre", [])
+        ano_principal = ultimo_documento_ativo.get("ano_ativo", "2026")
+        if contas and ano_principal in ultimo_documento_ativo.get("dre_matriz_por_ano", {}):
+            ultimo_documento_ativo["dre_matriz_empresa"] = ultimo_documento_ativo["dre_matriz_por_ano"][ano_principal]
         return ultimo_documento_ativo
 
     conteudo_bytes = gerar_modelo_planilha_exemplo()
@@ -223,7 +223,8 @@ class LimparDadosRequest(BaseModel):
 def limpar_dados_demonstracao(req: LimparDadosRequest):
     """
     Zera individualmente um trimestre (1T, 2T, 3T, 4T) ou todos os trimestres/contas na sessão ativa.
-    Recalcula a matriz da empresa, balanço patrimonial, DRE e índices financeiros com sincronismo instantâneo.
+    Suporta tanto anos específicos quanto 'todos_anos' (global), recalculando instantaneamente
+    a matriz DRE de cada exercício, balanços patrimoniais, indicadores e totais consolidados.
     """
     global ultimo_documento_ativo
     if ultimo_documento_ativo is None:
@@ -231,21 +232,35 @@ def limpar_dados_demonstracao(req: LimparDadosRequest):
         ultimo_documento_ativo = processar_demonstracoes_com_jev(conteudo_bytes, "Demonstracoes_Exemplo_Acionistas.xlsx")
 
     trim = req.trimestre.upper()
-    ano_alvo = req.ano if (req.ano and req.ano != "todos_anos") else ultimo_documento_ativo.get("ano_ativo", "2026")
+    eh_todos_anos = (not req.ano) or (req.ano == "todos_anos")
+    
+    anos_disponiveis = ultimo_documento_ativo.get("anos_disponiveis", ["2026", "2025"])
+    anos_afetados = list(anos_disponiveis) if eh_todos_anos else [req.ano]
+    
     contas = ultimo_documento_ativo.get("contas_detalhadas", []) + ultimo_documento_ativo.get("itens_dre", [])
 
     if trim == "TODOS":
         for c in contas:
+            # Zera os saldos anuais de todos os anos afetados
             if "saldos_anuais" in c:
-                c["saldos_anuais"][ano_alvo] = 0.0
-            if "saldos_trimestrais" in c:
-                c["saldos_trimestrais"]["1T"] = 0.0
-                c["saldos_trimestrais"]["2T"] = 0.0
-                c["saldos_trimestrais"]["3T"] = 0.0
-                c["saldos_trimestrais"]["4T"] = 0.0
-                c["saldos_trimestrais"]["anual"] = 0.0
-            if ano_alvo == ultimo_documento_ativo.get("ano_ativo"):
+                for ano in anos_afetados:
+                    c["saldos_anuais"][ano] = 0.0
+            
+            # Se limpou todos os anos ou o ano ativo da sessão, zera também os trimestrais e o saldo atual
+            if eh_todos_anos or (ultimo_documento_ativo.get("ano_ativo") in anos_afetados):
+                if "saldos_trimestrais" in c:
+                    c["saldos_trimestrais"]["1T"] = 0.0
+                    c["saldos_trimestrais"]["2T"] = 0.0
+                    c["saldos_trimestrais"]["3T"] = 0.0
+                    c["saldos_trimestrais"]["4T"] = 0.0
+                    c["saldos_trimestrais"]["anual"] = 0.0
                 c["saldo_atual"] = 0.0
+                
+            # Se existir dicionário de trimestres por ano, zera para cada ano afetado
+            if "saldos_trimestrais_por_ano" in c:
+                for ano in anos_afetados:
+                    c["saldos_trimestrais_por_ano"][ano] = {"1T": 0.0, "2T": 0.0, "3T": 0.0, "4T": 0.0, "anual": 0.0}
+
     elif trim in ["1T", "2T", "3T", "4T"]:
         for c in contas:
             if "saldos_trimestrais" in c:
@@ -257,42 +272,18 @@ def limpar_dados_demonstracao(req: LimparDadosRequest):
                     c["saldos_trimestrais"].get("4T", 0.0)
                 )
                 c["saldos_trimestrais"]["anual"] = soma_recalc
-                if ano_alvo == ultimo_documento_ativo.get("ano_ativo"):
+                if eh_todos_anos or (ultimo_documento_ativo.get("ano_ativo") in anos_afetados):
                     c["saldo_atual"] = soma_recalc
-                if "saldos_anuais" in c:
-                    c["saldos_anuais"][ano_alvo] = soma_recalc
+                
+            if "saldos_anuais" in c:
+                for ano in anos_afetados:
+                    if "saldos_trimestrais_por_ano" in c and ano in c["saldos_trimestrais_por_ano"]:
+                        c["saldos_trimestrais_por_ano"][ano][trim] = 0.0
+                        c["saldos_anuais"][ano] = sum(c["saldos_trimestrais_por_ano"][ano].get(t, 0.0) for t in ["1T", "2T", "3T", "4T"])
+                    elif eh_todos_anos or ano == ultimo_documento_ativo.get("ano_ativo"):
+                        c["saldos_anuais"][ano] = c.get("saldos_trimestrais", {}).get("anual", 0.0)
 
-    # 1. Prepara as contas com os saldos atualizados para conglutinar na matriz do ano
-    contas_ano = []
-    for c in contas:
-        c_copia = dict(c)
-        c_copia["saldo_atual"] = c.get("saldos_anuais", {}).get(ano_alvo, c.get("saldo_atual", 0.0))
-        c_copia["saldos_trimestrais"] = c.get("saldos_trimestrais", {})
-        contas_ano.append(c_copia)
-
-    matriz_recalc = conglutinador_jev.conglutinar_dados_na_matriz(contas_ano)
-    if "dre_matriz_por_ano" not in ultimo_documento_ativo:
-        ultimo_documento_ativo["dre_matriz_por_ano"] = {}
-    ultimo_documento_ativo["dre_matriz_por_ano"][ano_alvo] = matriz_recalc
-    ultimo_documento_ativo["dre_matriz_empresa"] = matriz_recalc
-
-    # 2. Atualiza totais resumidos da DRE
-    rec_bruta = matriz_recalc["resumo_executivo"]["receita_bruta_anual"]
-    lucro_liq = matriz_recalc["resumo_executivo"]["lucro_liquido_anual"]
-    ultimo_documento_ativo["totais_dre"] = {
-        "receita_bruta": rec_bruta,
-        "lucro_liquido": lucro_liq
-    }
-    if "totais_dre_por_ano" not in ultimo_documento_ativo:
-        ultimo_documento_ativo["totais_dre_por_ano"] = {}
-    ultimo_documento_ativo["totais_dre_por_ano"][ano_alvo] = {
-        "receita_bruta": rec_bruta,
-        "lucro_liquido": lucro_liq
-    }
-
-    # 3. Recalcula os totais do Balanço Patrimonial para o ano_alvo
-    contas_balanco = ultimo_documento_ativo.get("contas_detalhadas", [])
-
+    # Classificação de grupos do balanço
     def _classificar_grupo(c):
         cod = str(c.get("codigo", "")).strip()
         g = c.get("grupo", "").lower()
@@ -313,50 +304,105 @@ def limpar_dados_demonstracao(req: LimparDadosRequest):
         if any(w in desc for w in ['fornecedor', 'salário', 'tributo']): return "passivo_circulante"
         return "ativo_circulante"
 
-    ac_k = sum(c.get("saldos_anuais", {}).get(ano_alvo, 0.0) for c in contas_balanco if _classificar_grupo(c) == "ativo_circulante")
-    anc_k = sum(c.get("saldos_anuais", {}).get(ano_alvo, 0.0) for c in contas_balanco if _classificar_grupo(c) == "ativo_nao_circulante")
-    disp_k = sum(c.get("saldos_anuais", {}).get(ano_alvo, 0.0) for c in contas_balanco if "disponib" in c.get("grupo", "").lower() or any(w in c.get("conta", "").lower() for w in ['caixa', 'banco', 'aplica']))
-    est_k = sum(c.get("saldos_anuais", {}).get(ano_alvo, 0.0) for c in contas_balanco if "estoque" in c.get("grupo", "").lower() or "estoque" in c.get("conta", "").lower())
-    pc_k = sum(c.get("saldos_anuais", {}).get(ano_alvo, 0.0) for c in contas_balanco if _classificar_grupo(c) == "passivo_circulante")
-    pnc_k = sum(c.get("saldos_anuais", {}).get(ano_alvo, 0.0) for c in contas_balanco if _classificar_grupo(c) == "passivo_nao_circulante")
-    pl_k = sum(c.get("saldos_anuais", {}).get(ano_alvo, 0.0) for c in contas_balanco if _classificar_grupo(c) == "patrimonio_liquido")
+    from app.services.calculos_indices import CalculadoraIndicesFinanceiros
 
-    totais_b_novo = {
-        "ativo_circulante": ac_k,
-        "ativo_nao_circulante": anc_k,
-        "ativo_total": ac_k + anc_k,
-        "passivo_circulante": pc_k,
-        "passivo_nao_circulante": pnc_k,
-        "patrimonio_liquido": pl_k,
-        "passivo_total": pc_k + pnc_k + pl_k if (pc_k + pnc_k + pl_k) > 0 else 0.0,
-        "disponibilidades": disp_k
-    }
+    if "dre_matriz_por_ano" not in ultimo_documento_ativo:
+        ultimo_documento_ativo["dre_matriz_por_ano"] = {}
+    if "totais_dre_por_ano" not in ultimo_documento_ativo:
+        ultimo_documento_ativo["totais_dre_por_ano"] = {}
     if "totais_balanco_por_ano" not in ultimo_documento_ativo:
         ultimo_documento_ativo["totais_balanco_por_ano"] = {}
-    ultimo_documento_ativo["totais_balanco_por_ano"][ano_alvo] = totais_b_novo
-    ultimo_documento_ativo["totais_balanco"] = totais_b_novo
-
-    # 4. Recalcula os Indicadores Financeiros para o ano_alvo
-    from app.services.calculos_indices import CalculadoraIndicesFinanceiros
-    indices_novos = CalculadoraIndicesFinanceiros.calcular_todos_indices(
-        ativo_circulante=ac_k,
-        ativo_nao_circulante=anc_k,
-        disponibilidades=disp_k,
-        estoques=est_k,
-        passivo_circulante=pc_k,
-        passivo_nao_circulante=pnc_k,
-        patrimonio_liquido=pl_k,
-        receita_liquida=rec_bruta * 0.88,
-        lucro_bruto=rec_bruta * 0.45,
-        ebitda=lucro_liq * 1.45,
-        lucro_liquido=lucro_liq
-    )
     if "indicadores_por_ano" not in ultimo_documento_ativo:
         ultimo_documento_ativo["indicadores_por_ano"] = {}
-    ultimo_documento_ativo["indicadores_por_ano"][ano_alvo] = indices_novos
-    ultimo_documento_ativo["indices_financeiros"] = indices_novos
 
-    msg = f"Todos os dados do exercício {ano_alvo} foram zerados com sucesso!" if trim == "TODOS" else f"Os dados do {trim} no exercício {ano_alvo} foram limpos e recalculados!"
+    contas_balanco = ultimo_documento_ativo.get("contas_detalhadas", [])
+
+    # Recalcula para cada ano afetado
+    for ano_k in anos_afetados:
+        contas_ano = []
+        for c in contas:
+            c_copia = dict(c)
+            c_copia["saldo_atual"] = c.get("saldos_anuais", {}).get(ano_k, (c.get("saldo_atual", 0.0) if ano_k == ultimo_documento_ativo.get("ano_ativo") else 0.0))
+            if ano_k == ultimo_documento_ativo.get("ano_ativo"):
+                c_copia["saldos_trimestrais"] = c.get("saldos_trimestrais", {})
+            else:
+                c_copia["saldos_trimestrais"] = c.get("saldos_trimestrais_por_ano", {}).get(ano_k, {"1T": 0.0, "2T": 0.0, "3T": 0.0, "4T": 0.0, "anual": c_copia["saldo_atual"]})
+            contas_ano.append(c_copia)
+
+        matriz_recalc = conglutinador_jev.conglutinar_dados_na_matriz(contas_ano)
+        ultimo_documento_ativo["dre_matriz_por_ano"][ano_k] = matriz_recalc
+
+        rec_bruta = matriz_recalc["resumo_executivo"]["receita_bruta_anual"]
+        lucro_liq = matriz_recalc["resumo_executivo"]["lucro_liquido_anual"]
+        ultimo_documento_ativo["totais_dre_por_ano"][ano_k] = {
+            "receita_bruta": rec_bruta,
+            "lucro_liquido": lucro_liq
+        }
+
+        # Totais Balanço ano_k
+        ac_k = sum(c.get("saldos_anuais", {}).get(ano_k, 0.0) for c in contas_balanco if _classificar_grupo(c) == "ativo_circulante")
+        anc_k = sum(c.get("saldos_anuais", {}).get(ano_k, 0.0) for c in contas_balanco if _classificar_grupo(c) == "ativo_nao_circulante")
+        disp_k = sum(c.get("saldos_anuais", {}).get(ano_k, 0.0) for c in contas_balanco if "disponib" in c.get("grupo", "").lower() or any(w in c.get("conta", "").lower() for w in ['caixa', 'banco', 'aplica']))
+        est_k = sum(c.get("saldos_anuais", {}).get(ano_k, 0.0) for c in contas_balanco if "estoque" in c.get("grupo", "").lower() or "estoque" in c.get("conta", "").lower())
+        pc_k = sum(c.get("saldos_anuais", {}).get(ano_k, 0.0) for c in contas_balanco if _classificar_grupo(c) == "passivo_circulante")
+        pnc_k = sum(c.get("saldos_anuais", {}).get(ano_k, 0.0) for c in contas_balanco if _classificar_grupo(c) == "passivo_nao_circulante")
+        pl_k = sum(c.get("saldos_anuais", {}).get(ano_k, 0.0) for c in contas_balanco if _classificar_grupo(c) == "patrimonio_liquido")
+
+        totais_b_novo = {
+            "ativo_circulante": ac_k,
+            "ativo_nao_circulante": anc_k,
+            "ativo_total": ac_k + anc_k,
+            "passivo_circulante": pc_k,
+            "passivo_nao_circulante": pnc_k,
+            "patrimonio_liquido": pl_k,
+            "passivo_total": pc_k + pnc_k + pl_k if (pc_k + pnc_k + pl_k) > 0 else 0.0,
+            "disponibilidades": disp_k
+        }
+        ultimo_documento_ativo["totais_balanco_por_ano"][ano_k] = totais_b_novo
+
+        # Indicadores ano_k
+        indices_novos = CalculadoraIndicesFinanceiros.calcular_todos_indices(
+            ativo_circulante=ac_k,
+            ativo_nao_circulante=anc_k,
+            disponibilidades=disp_k,
+            estoques=est_k,
+            passivo_circulante=pc_k,
+            passivo_nao_circulante=pnc_k,
+            patrimonio_liquido=pl_k,
+            receita_liquida=rec_bruta * 0.88,
+            lucro_bruto=rec_bruta * 0.45,
+            ebitda=lucro_liq * 1.45,
+            lucro_liquido=lucro_liq
+        )
+        ultimo_documento_ativo["indicadores_por_ano"][ano_k] = indices_novos
+
+    ano_principal = ultimo_documento_ativo.get("ano_ativo", "2026")
+    if ano_principal in ultimo_documento_ativo["dre_matriz_por_ano"]:
+        ultimo_documento_ativo["dre_matriz_empresa"] = ultimo_documento_ativo["dre_matriz_por_ano"][ano_principal]
+    if ano_principal in ultimo_documento_ativo["totais_dre_por_ano"]:
+        ultimo_documento_ativo["totais_dre"] = ultimo_documento_ativo["totais_dre_por_ano"][ano_principal]
+    if ano_principal in ultimo_documento_ativo["totais_balanco_por_ano"]:
+        ultimo_documento_ativo["totais_balanco"] = ultimo_documento_ativo["totais_balanco_por_ano"][ano_principal]
+    if ano_principal in ultimo_documento_ativo["indicadores_por_ano"]:
+        ultimo_documento_ativo["indices_financeiros"] = ultimo_documento_ativo["indicadores_por_ano"][ano_principal]
+
+    # Se zerou todos os anos, zera explicitamente os totais de exibição
+    if eh_todos_anos and trim == "TODOS":
+        ultimo_documento_ativo["totais_dre"] = {"receita_bruta": 0.0, "lucro_liquido": 0.0}
+        ultimo_documento_ativo["totais_balanco"] = {
+            "ativo_circulante": 0.0, "ativo_nao_circulante": 0.0, "ativo_total": 0.0,
+            "passivo_circulante": 0.0, "passivo_nao_circulante": 0.0, "patrimonio_liquido": 0.0,
+            "passivo_total": 0.0, "disponibilidades": 0.0
+        }
+        ultimo_documento_ativo["indices_financeiros"] = CalculadoraIndicesFinanceiros.calcular_todos_indices(
+            0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
+        )
+
+    if eh_todos_anos:
+        msg = "Todos os dados e trimestres de TODOS OS EXERCÍCIOS foram zerados com sucesso!" if trim == "TODOS" else f"Os dados do {trim} foram limpos e recalculados em todos os exercícios!"
+    else:
+        msg = f"Todos os dados do exercício {req.ano} foram zerados com sucesso!" if trim == "TODOS" else f"Os dados do {trim} no exercício {req.ano} foram limpos e recalculados!"
+    
     return {
         "status": "sucesso",
         "mensagem": msg,
