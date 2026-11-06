@@ -1,7 +1,7 @@
 import os
 from typing import Optional, List
-from fastapi import FastAPI, UploadFile, File, Response, Form
-from fastapi.responses import HTMLResponse
+from fastapi import FastAPI, UploadFile, File, Response, Form, Depends
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 
@@ -10,6 +10,7 @@ from app.services.agente_langgraph_service import agente_langgraph
 from app.services.planilha_service import gerar_modelo_planilha_exemplo, processar_demonstracoes_com_jev
 from app.services.pdf_service import gerar_modelo_pdf_exemplo, processar_pdf_demonstracoes_com_jev
 from app.services.matriz_empresa_service import conglutinador_jev, ESTRUTURA_MATRIZ_PADRAO
+from app.services.security_middleware import SecurityHeadersMiddleware, verificar_token_acesso
 
 load_dotenv()
 
@@ -19,20 +20,32 @@ app = FastAPI(
     version="1.0.0"
 )
 
+# Origens permitidas estritas para CORS (Ambiente Local + Nuvem Render)
+origens_permitidas = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://localhost:8000",
+    "http://127.0.0.1:8000",
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "https://painel-demonstracoes-financeiras.onrender.com"
+]
+
+# Permite adicionar novas origens por variável de ambiente sem alterar código
+origens_custom = os.getenv("CORS_ALLOWED_ORIGINS", "")
+if origens_custom:
+    origens_permitidas.extend([o.strip() for o in origens_custom.split(",") if o.strip()])
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-        "http://localhost:8000",
-        "http://127.0.0.1:8000",
-        "http://localhost:3000",
-        "http://127.0.0.1:3000"
-    ],
+    allow_origins=origens_permitidas,
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
+
+# Adiciona Middleware de Headers OWASP e Rate Limiting
+app.add_middleware(SecurityHeadersMiddleware)
 
 @app.middleware("http")
 async def add_no_cache_headers(request, call_next):
@@ -158,7 +171,8 @@ def baixar_modelo_pdf():
     )
 
 @app.get("/api/dados-demonstracao-padrao")
-def obter_dados_padrao():
+def obter_dados_padrao(_auth: bool = Depends(verificar_token_acesso)):
+
     """
     Retorna o documento ativo atual (último arquivo importado) ou a demonstração de exemplo caso nenhum tenha sido carregado.
     Re-conglutina na matriz corporativa para refletir imediatamente novas regras do JEV.
@@ -438,7 +452,8 @@ class ChatAgenteRequest(BaseModel):
     contexto_financeiro: Optional[dict] = None
 
 @app.post("/api/chat/agente-financeiro")
-def chat_agente_financeiro(req: ChatAgenteRequest):
+def chat_agente_financeiro(req: ChatAgenteRequest, _auth: bool = Depends(verificar_token_acesso)):
+
     """
     Endpoint de Conversação com o Agente Cognitivo LangGraph:
     Mantém memória de curto prazo (buffer), sumarização progressiva ativa (Context Engineering)
@@ -465,6 +480,41 @@ def limpar_sessao_chat(thread_id: str):
     """
     sucesso = agente_langgraph.limpar_sessao(thread_id)
     return {"status": "sucesso" if sucesso else "erro", "thread_id": thread_id, "limpo": sucesso}
+
+# --------------------------------------------------------------------------------------
+# ROTAS DE AUTENTICAÇÃO E CONTROLE DE ACESSO (ZERO TRUST)
+# --------------------------------------------------------------------------------------
+class LoginAcessoRequest(BaseModel):
+    token: str
+
+@app.get("/api/auth/status-protecao")
+def status_protecao_autenticacao():
+    """
+    Informa ao frontend se a aplicação requer PIN/Chave de Acesso para visualização.
+    """
+    token_configurado = os.getenv("PAINEL_ACCESS_TOKEN", "").strip()
+    return {
+        "autenticacao_ativa": bool(token_configurado),
+        "mensagem": "Autenticação requerida por PIN/Chave de Acesso" if token_configurado else "Modo aberto local"
+    }
+
+@app.post("/api/auth/verificar-acesso")
+def verificar_acesso_acionista(req: LoginAcessoRequest):
+    """
+    Valida a chave de acesso do acionista contra a variável de ambiente segura.
+    """
+    token_esperado = os.getenv("PAINEL_ACCESS_TOKEN", "").strip()
+    if not token_esperado:
+        return {"valido": True, "mensagem": "Autenticação desativada no servidor."}
+
+    if req.token.strip() == token_esperado:
+        return {"valido": True, "mensagem": "Acesso concedido com sucesso ao Painel!"}
+    
+    return JSONResponse(
+        status_code=401,
+        content={"valido": False, "mensagem": "Chave de Acesso incorreta. Verifique o PIN cadastrado."}
+    )
+
 
 
 

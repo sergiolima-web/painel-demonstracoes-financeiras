@@ -264,5 +264,58 @@ def test_agente_langgraph_reset_sessao():
     assert dados["status"] == "sucesso"
     assert dados["limpo"] is True
 
+def test_headers_seguranca_owasp_e_csp():
+    """Valida a injeção mandatória dos Headers de Segurança OWASP Top 10 e CSP calibrada."""
+    response = client.get("/api/health")
+    assert response.status_code == 200
+    
+    # 1. Anti-Clickjacking
+    assert response.headers.get("X-Frame-Options") == "DENY"
+    
+    # 2. Anti-MIME Sniffing
+    assert response.headers.get("X-Content-Type-Options") == "nosniff"
+    
+    # 3. Content-Security-Policy calibrada pelo Goldfish para permitir CDNs legítimas
+    csp = response.headers.get("Content-Security-Policy", "")
+    assert "default-src 'self'" in csp
+    assert "https://cdn.tailwindcss.com" in csp
+    assert "https://unpkg.com" in csp
+    assert "frame-ancestors 'none'" in csp
+
+def test_status_protecao_autenticacao():
+    """Valida o endpoint de status de autenticação dos acionistas."""
+    response = client.get("/api/auth/status-protecao")
+    assert response.status_code == 200
+    dados = response.json()
+    assert "autenticacao_ativa" in dados
+    assert "mensagem" in dados
+
+def test_rate_limiter_bloqueio_flood():
+    """Valida que o rate limiter intercepta requisições excessivas quando fora de modo teste."""
+    from app.services.security_middleware import InMemoryRateLimiter
+    from starlette.requests import Request
+    
+    # Cria uma instância isolada com limite baixo para teste
+    limiter = InMemoryRateLimiter(limite_padrao_minuto=5, limite_sensivel_minuto=2)
+    
+    # Simula requisição de IP externo comum
+    class FakeRequest:
+        class client:
+            host = "203.0.113.195"  # IP público simulado
+
+    req = FakeRequest()
+    
+    # Dispara 2 requisições sensíveis (dentro do limite)
+    permitido1, _ = limiter.verificar_limite(req, eh_rota_sensivel=True)
+    permitido2, _ = limiter.verificar_limite(req, eh_rota_sensivel=True)
+    assert permitido1 is True
+    assert permitido2 is True
+    
+    # A 3ª requisição estoura o teto e deve ser bloqueada com tempo de espera
+    permitido3, espera = limiter.verificar_limite(req, eh_rota_sensivel=True)
+    assert permitido3 is False
+    assert espera > 0
+
+
 
 

@@ -87,6 +87,62 @@
       const [msgMapeamento, setMsgMapeamento] = useState('');
       const fileInputRef = useRef(null);
 
+      // Estados de Autenticação e Proteção Zero Trust na Nuvem
+      const [exigeAuth, setExigeAuth] = useState(false);
+      const [autenticado, setAutenticado] = useState(true);
+      const [tokenInput, setTokenInput] = useState('');
+      const [erroAuth, setErroAuth] = useState('');
+      const [validandoAuth, setValidandoAuth] = useState(false);
+
+      const checarStatusProtecao = async () => {
+        try {
+          const res = await fetch('/api/auth/status-protecao');
+          const json = await res.json();
+          if (json.autenticacao_ativa) {
+            setExigeAuth(true);
+            const tokenSalvo = sessionStorage.getItem('painel_access_token');
+            if (!tokenSalvo) {
+              setAutenticado(false);
+            } else {
+              const resVal = await fetch('/api/auth/verificar-acesso', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ token: tokenSalvo })
+              });
+              if (!resVal.ok) {
+                setAutenticado(false);
+              }
+            }
+          }
+        } catch(e) {}
+      };
+
+      const realizarLogin = async (e) => {
+        if (e) e.preventDefault();
+        if (!tokenInput.trim()) return;
+        setValidandoAuth(true);
+        setErroAuth('');
+        try {
+          const res = await fetch('/api/auth/verificar-acesso', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token: tokenInput.trim() })
+          });
+          if (res.ok) {
+            sessionStorage.setItem('painel_access_token', tokenInput.trim());
+            setAutenticado(true);
+            carregarDados();
+          } else {
+            setErroAuth('Chave de Acesso incorreta. Verifique o PIN cadastrado no servidor.');
+          }
+        } catch(err) {
+          setErroAuth('Erro de comunicação com o servidor de autenticação.');
+        } finally {
+          setValidandoAuth(false);
+        }
+      };
+
+
       // Salva preferências no localStorage para que ao dar F5 não perca a visualização
       useEffect(() => {
         try { localStorage.setItem('tab_ativa', activeTab); } catch(e){}
@@ -112,13 +168,20 @@
         }
         try {
           const timestamp = Date.now();
+          const tokenSalvo = sessionStorage.getItem('painel_access_token') || '';
           const res = await fetch(`/api/dados-demonstracao-padrao?_t=${timestamp}`, {
             cache: 'no-store',
             headers: {
               'Cache-Control': 'no-cache, no-store, must-revalidate',
-              'Pragma': 'no-cache'
+              'Pragma': 'no-cache',
+              'X-Access-Token': tokenSalvo
             }
           });
+          if (res.status === 401) {
+            setExigeAuth(true);
+            setAutenticado(false);
+            return;
+          }
           const json = await res.json();
           setData(json);
           if (ehAtualizacaoF5) {
@@ -138,8 +201,10 @@
       };
 
       useEffect(() => {
+        checarStatusProtecao();
         carregarDados();
       }, []);
+
 
       // Captura da tecla F5 e atalhos de atualização globalmente
       useEffect(() => {
@@ -483,8 +548,55 @@
         return 'hover:bg-amber-50/60 text-slate-800';
       };
 
+      if (exigeAuth && !autenticado) {
+        return (
+          <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4">
+            <div className="max-w-md w-full bg-slate-900 border border-slate-800 rounded-3xl p-8 shadow-2xl text-center">
+              <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-cyan-500 to-blue-600 flex items-center justify-center text-3xl mx-auto mb-5 shadow-lg shadow-cyan-500/20">
+                🔒
+              </div>
+              <h2 className="text-xl font-black text-white tracking-tight">Acesso Seguro de Acionistas</h2>
+              <p className="text-xs text-slate-400 mt-2">
+                Painel Corporativo de Demonstrações Financeiras & JEV Engine
+              </p>
+              <form onSubmit={realizarLogin} className="mt-6 space-y-4">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 text-left mb-1.5">
+                    PIN / Chave de Acesso da Diretoria
+                  </label>
+                  <input
+                    type="password"
+                    value={tokenInput}
+                    onChange={(e) => setTokenInput(e.target.value)}
+                    placeholder="Digite a chave de acesso..."
+                    className="w-full px-4 py-3 bg-slate-950 border border-slate-700 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500 text-center tracking-widest font-mono"
+                    autoFocus
+                  />
+                </div>
+                {erroAuth && (
+                  <div className="p-3 bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs rounded-xl text-left">
+                    ⚠️ {erroAuth}
+                  </div>
+                )}
+                <button
+                  type="submit"
+                  disabled={validandoAuth || !tokenInput.trim()}
+                  className="w-full py-3 bg-cyan-600 hover:bg-cyan-500 disabled:opacity-50 text-white font-bold text-sm rounded-xl shadow-lg shadow-cyan-600/30 transition flex items-center justify-center gap-2"
+                >
+                  {validandoAuth ? 'Autenticando...' : 'Liberar Acesso ao Painel'}
+                </button>
+              </form>
+              <div className="mt-6 pt-5 border-t border-slate-800 text-[11px] text-slate-500">
+                Padrão Zero Trust • Criptografia de Ponta a Ponta
+              </div>
+            </div>
+          </div>
+        );
+      }
+
       return (
         <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col font-sans">
+
           
           {/* Header Superior */}
           <header className="bg-white/95 backdrop-blur-md border-b border-slate-200 sticky top-0 z-50 shadow-sm w-full">
