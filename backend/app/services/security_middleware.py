@@ -129,3 +129,4 @@ def verificar_token_acesso(token_recebido: Optional[str] = Security(API_KEY_HEAD
             headers={"WWW-Authenticate": "ApiKey"}
         )
     return True
+

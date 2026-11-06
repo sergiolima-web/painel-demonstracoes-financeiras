@@ -11,6 +11,7 @@ from app.services.planilha_service import gerar_modelo_planilha_exemplo, process
 from app.services.pdf_service import gerar_modelo_pdf_exemplo, processar_pdf_demonstracoes_com_jev
 from app.services.matriz_empresa_service import conglutinador_jev, ESTRUTURA_MATRIZ_PADRAO
 from app.services.security_middleware import SecurityHeadersMiddleware, verificar_token_acesso
+from fastapi.staticfiles import StaticFiles
 
 load_dotenv()
 
@@ -19,6 +20,12 @@ app = FastAPI(
     description="Motor de cálculo de Balanço Patrimonial, DRE, Índices Financeiros e Integração JEV TypeSafe",
     version="1.0.0"
 )
+
+# Monta diretório de arquivos estáticos (imagens, ícones e assets)
+static_dir = os.path.join(os.path.dirname(__file__), "static")
+os.makedirs(static_dir, exist_ok=True)
+app.mount("/static", StaticFiles(directory=static_dir), name="static")
+
 
 # Origens permitidas estritas para CORS (Ambiente Local + Nuvem Render)
 origens_permitidas = [
