@@ -291,8 +291,10 @@
         formData.append('trimestres_autorizados', JSON.stringify(trimestres));
 
         try {
+          const tokenSalvo = sessionStorage.getItem('painel_access_token') || '';
           const res = await fetch('/api/upload-demonstracao', {
             method: 'POST',
+            headers: { 'X-Access-Token': tokenSalvo },
             body: formData
           });
           const json = await res.json();
@@ -313,7 +315,7 @@
             setProcessandoModal(false);
             const total = json.total_linhas_lidas || (json.itens_dre?.length || 0) + (json.contas_detalhadas?.length || 0);
             const trimStr = trimestres.join(', ');
-            setMensagemSucesso(`✅ Planilha "${file.name}" importada com sucesso para o ano ${anoDestino}! Trimestres autorizados: [${trimStr}]. Demais trimestres mantidos zerados.`);
+            setMensagemSucesso(`✅ Planilha "${file.name}" importada com sucesso para o ano ${anoDestino}! Trimestres autorizados: [${trimStr}]. Demais anos e trimestres preservados.`);
             setTimeout(() => setMensagemSucesso(''), 8000);
           }, 500);
 
@@ -337,9 +339,13 @@
 
         setIsLoading(true);
         try {
+          const tokenSalvo = sessionStorage.getItem('painel_access_token') || '';
           const res = await fetch('/api/limpar-dados', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Access-Token': tokenSalvo
+            },
             body: JSON.stringify({ trimestre: trimestre, ano: anoAtivo })
           });
           const json = await res.json();
@@ -358,11 +364,72 @@
         }
       };
 
+      // Varredura e Expurgo Total do Banco de Dados (Todos os Anos e Trimestres 100% Zerados)
+      const handleExpurgarBancoDados = async () => {
+        if (!confirm('⚠️ VARREDURA TOTAL DO BANCO DE DADOS:\nDeseja varrer o banco de dados e excluir TODOS os valores de TODOS os anos (2026, 2025, 2024, 2023) e trimestres, deixando 100% zerado?')) {
+          return;
+        }
+        setIsLoading(true);
+        try {
+          const tokenSalvo = sessionStorage.getItem('painel_access_token') || '';
+          const res = await fetch('/api/banco-dados/expurgar-tudo', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Access-Token': tokenSalvo
+            }
+          });
+          const json = await res.json();
+          if (json.status === 'sucesso' && json.dados_atualizados) {
+            setData(json.dados_atualizados);
+            setMensagemSucesso(`🧹 ${json.mensagem}`);
+            setTimeout(() => setMensagemSucesso(''), 7000);
+          } else {
+            alert(json.mensagem || 'Erro ao expurgar banco de dados.');
+          }
+        } catch (err) {
+          console.error(err);
+          alert('Erro ao comunicar com o servidor para varrer o banco de dados.');
+        } finally {
+          setIsLoading(false);
+        }
+      };
+
       const [regrasCadastradas, setRegrasCadastradas] = React.useState([]);
+
+      // Estados para Matriz, Filiais e Plano de Contas Multi-Empresas
+      const [empresasLista, setEmpresasLista] = React.useState([]);
+      const [planoContasLista, setPlanoContasLista] = React.useState([]);
+      const [empresaSelecionadaFiltro, setEmpresaSelecionadaFiltro] = React.useState('CONSOLIDADO');
+      const [msgEmpresaPlano, setMsgEmpresaPlano] = React.useState('');
+
+      // Formulário Nova Empresa (Matriz ou Filial)
+      const [novaEmpTipo, setNovaEmpTipo] = React.useState('FILIAL');
+      const [novaEmpRazao, setNovaEmpRazao] = React.useState('');
+      const [novaEmpFantasia, setNovaEmpFantasia] = React.useState('');
+      const [novaEmpCnpj, setNovaEmpCnpj] = React.useState('');
+      const [novaEmpUf, setNovaEmpUf] = React.useState('SP');
+      const [novaEmpCidade, setNovaEmpCidade] = React.useState('');
+      const [novaEmpRegime, setNovaEmpRegime] = React.useState('Lucro Real');
+      const [novaEmpMatrizId, setNovaEmpMatrizId] = React.useState('emp_matriz_01');
+
+      // Formulário Nova Conta do Plano de Contas Multi-Empresas
+      const [novaContaEscopo, setNovaContaEscopo] = React.useState('MATRIZ');
+      const [novaContaCodigo, setNovaContaCodigo] = React.useState('');
+      const [novaContaNome, setNovaContaNome] = React.useState('');
+      const [novaContaDemonstracao, setNovaContaDemonstracao] = React.useState('DRE');
+      const [novaContaNatureza, setNovaContaNatureza] = React.useState('CREDORA');
+      const [novaContaTipo, setNovaContaTipo] = React.useState('ANALITICA');
+      const [novaContaDestinoId, setNovaContaDestinoId] = React.useState('vendas_mercadorias');
+      const [novaContaPropagar, setNovaContaPropagar] = React.useState(true);
+      const [buscaPlanoContas, setBuscaPlanoContas] = React.useState('');
 
       const carregarRegrasDePara = async () => {
         try {
-          const res = await fetch('/api/regras-depara');
+          const tokenSalvo = sessionStorage.getItem('painel_access_token') || '';
+          const res = await fetch('/api/regras-depara', {
+            headers: { 'X-Access-Token': tokenSalvo }
+          });
           const json = await res.json();
           if (json.regras) setRegrasCadastradas(json.regras);
         } catch (e) {
@@ -370,18 +437,150 @@
         }
       };
 
+      const carregarEmpresasPlano = async () => {
+        try {
+          const tokenSalvo = sessionStorage.getItem('painel_access_token') || '';
+          const res = await fetch('/api/empresas-plano', {
+            headers: { 'X-Access-Token': tokenSalvo }
+          });
+          const json = await res.json();
+          if (json.empresas) setEmpresasLista(json.empresas);
+          if (json.plano_contas) setPlanoContasLista(json.plano_contas);
+        } catch (e) {
+          console.error("Erro ao carregar empresas e plano de contas", e);
+        }
+      };
+
       React.useEffect(() => {
         carregarRegrasDePara();
+        carregarEmpresasPlano();
       }, []);
+
+      const handleCadastrarEmpresa = async (e) => {
+        e.preventDefault();
+        if (!novaEmpRazao.trim()) return;
+        try {
+          const tokenSalvo = sessionStorage.getItem('painel_access_token') || '';
+          const res = await fetch('/api/empresas', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Access-Token': tokenSalvo
+            },
+            body: JSON.stringify({
+              tipo: novaEmpTipo,
+              razao_social: novaEmpRazao.trim(),
+              nome_fantasia: novaEmpFantasia.trim() || novaEmpRazao.trim(),
+              cnpj: novaEmpCnpj.trim(),
+              uf: novaEmpUf.trim(),
+              cidade: novaEmpCidade.trim(),
+              regime_tributario: novaEmpRegime,
+              matriz_id: novaEmpTipo === 'FILIAL' ? novaEmpMatrizId : null
+            })
+          });
+          const json = await res.json();
+          if (json.status === 'sucesso') {
+            setMsgEmpresaPlano(`✅ ${json.mensagem}`);
+            setNovaEmpRazao('');
+            setNovaEmpFantasia('');
+            setNovaEmpCnpj('');
+            setNovaEmpCidade('');
+            carregarEmpresasPlano();
+            setTimeout(() => setMsgEmpresaPlano(''), 6000);
+          } else {
+            alert(json.detail || json.mensagem || 'Erro ao cadastrar empresa.');
+          }
+        } catch (err) {
+          alert('Erro ao salvar empresa no servidor.');
+        }
+      };
+
+      const handleRemoverEmpresa = async (empId) => {
+        if (!confirm('Deseja realmente remover esta empresa do cadastro?')) return;
+        try {
+          const tokenSalvo = sessionStorage.getItem('painel_access_token') || '';
+          const res = await fetch(`/api/empresas/${empId}`, {
+            method: 'DELETE',
+            headers: { 'X-Access-Token': tokenSalvo }
+          });
+          const json = await res.json();
+          if (json.status === 'sucesso') {
+            carregarEmpresasPlano();
+            setMsgEmpresaPlano('🗑️ Empresa removida com sucesso.');
+            setTimeout(() => setMsgEmpresaPlano(''), 4000);
+          } else {
+            alert(json.detail || json.mensagem || 'Não foi possível remover a empresa.');
+          }
+        } catch (e) {
+          console.error(e);
+        }
+      };
+
+      const handleCadastrarContaPlano = async (e) => {
+        e.preventDefault();
+        if (!novaContaCodigo.trim() || !novaContaNome.trim()) return;
+        try {
+          const tokenSalvo = sessionStorage.getItem('painel_access_token') || '';
+          const res = await fetch('/api/plano-contas', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Access-Token': tokenSalvo
+            },
+            body: JSON.stringify({
+              escopo: novaContaEscopo,
+              codigo_contabil: novaContaCodigo.trim(),
+              nome_conta: novaContaNome.trim(),
+              demonstracao: novaContaDemonstracao,
+              natureza: novaContaNatureza,
+              tipo_conta: novaContaTipo,
+              conta_destino_matriz_id: novaContaDestinoId,
+              conta_destino_matriz_nome: novaContaDestinoId,
+              propagar_filiais: novaContaEscopo === 'MATRIZ' ? true : novaContaPropagar
+            })
+          });
+          const json = await res.json();
+          if (json.status === 'sucesso') {
+            setMsgEmpresaPlano(`✅ ${json.mensagem}`);
+            setNovaContaCodigo('');
+            setNovaContaNome('');
+            carregarEmpresasPlano();
+            carregarRegrasDePara();
+            setTimeout(() => setMsgEmpresaPlano(''), 7000);
+          } else {
+            alert(json.detail || json.mensagem || 'Erro ao cadastrar conta no plano.');
+          }
+        } catch (err) {
+          alert('Erro ao comunicar com o servidor.');
+        }
+      };
+
+      const handleRemoverContaPlano = async (contaId) => {
+        if (!confirm('Deseja remover esta conta do Plano de Contas?')) return;
+        try {
+          const tokenSalvo = sessionStorage.getItem('painel_access_token') || '';
+          await fetch(`/api/plano-contas/${contaId}`, {
+            method: 'DELETE',
+            headers: { 'X-Access-Token': tokenSalvo }
+          });
+          carregarEmpresasPlano();
+        } catch (e) {
+          console.error(e);
+        }
+      };
 
       const handleSalvarMapeamento = async (e) => {
         e.preventDefault();
         if (!contaDe.trim()) return;
         
         try {
+          const tokenSalvo = sessionStorage.getItem('painel_access_token') || '';
           const res = await fetch('/api/regras-depara', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Access-Token': tokenSalvo
+            },
             body: JSON.stringify({
               termo_origem: contaDe.trim(),
               conta_matriz_id: grupoPara,
@@ -405,7 +604,11 @@
 
       const handleExcluirRegra = async (regraId) => {
         try {
-          await fetch(`/api/regras-depara/${regraId}`, { method: 'DELETE' });
+          const tokenSalvo = sessionStorage.getItem('painel_access_token') || '';
+          await fetch(`/api/regras-depara/${regraId}`, {
+            method: 'DELETE',
+            headers: { 'X-Access-Token': tokenSalvo }
+          });
           carregarRegrasDePara();
         } catch (e) {
           console.error(e);
@@ -420,7 +623,11 @@
         { id: 'anual', rotulo: 'Consolidado Anual', icone: '🏛️' },
       ];
 
-      const anosDisponiveis = data?.anos_disponiveis || ['2026', '2025'];
+      // Garante que todos os anos oficiais (2026, 2025, 2024, 2023) NUNCA sumam ao importar qualquer planilha
+      const anosOficiaisFixos = ['2026', '2025', '2024', '2023'];
+      const anosDisponiveis = Array.from(
+        new Set([...anosOficiaisFixos, ...(data?.anos_disponiveis || [])])
+      ).sort((a, b) => Number(b) - Number(a));
 
       // Indicadores Financeiros isolados por ano
       const indicesBaseAno = (anoAtivo !== 'todos_anos' && data?.indicadores_por_ano?.[anoAtivo])
@@ -963,6 +1170,21 @@
                   </button>
 
                   <button
+                    onClick={() => setActiveTab('matriz_filiais')}
+                    className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all shrink-0 flex items-center gap-2 ${
+                      activeTab === 'matriz_filiais'
+                        ? 'bg-gradient-to-r from-indigo-600 via-blue-600 to-sky-600 text-white font-black shadow-md shadow-indigo-500/30 ring-2 ring-indigo-500'
+                        : 'bg-indigo-50 hover:bg-indigo-100 text-indigo-900 border border-indigo-300'
+                    }`}
+                  >
+                    <span>🏛️</span>
+                    <span>Matriz, Filiais & Plano de Contas</span>
+                    <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-indigo-200 text-indigo-950 border border-indigo-400 font-bold">
+                      {empresasLista.length} emp / {planoContasLista.length} contas
+                    </span>
+                  </button>
+
+                  <button
                     onClick={() => setActiveTab('ensino_jev')}
                     className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all shrink-0 flex items-center gap-2 ${
                       activeTab === 'ensino_jev'
@@ -1021,6 +1243,523 @@
                     <span>Indicadores Financeiros</span>
                   </button>
                 </div>
+
+                {/* Conteúdo da Nova Aba: Matriz, Filiais & Plano de Contas Multi-Empresas */}
+                {activeTab === 'matriz_filiais' && (
+                  <div className="space-y-6">
+                    {/* Banner Corporativo de Governança Multi-Empresas */}
+                    <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 border border-indigo-500/30 rounded-3xl p-6 shadow-xl flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6 text-white">
+                      <div className="space-y-2 max-w-3xl">
+                        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-500/20 border border-indigo-400/40 text-indigo-300 text-xs font-bold">
+                          <span>🏛️ Governança Corporativa Multi-Empresas & Herança Contábil</span>
+                        </div>
+                        <h2 className="text-xl font-extrabold text-white">
+                          Cadastro de Matriz, Filiais & Plano de Contas Unificado
+                        </h2>
+                        <p className="text-xs text-slate-300 leading-relaxed">
+                          Cadastre a <strong className="text-amber-400">Matriz</strong> e suas <strong className="text-sky-300">Filiais</strong>. Qualquer conta contábil cadastrada no escopo da <strong className="text-emerald-400">Matriz</strong> propaga e surte efeito imediato em todas as Filiais vinculadas e no motor de conglutinação automática TypeSafe JEV.
+                        </p>
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-3 shrink-0">
+                        <div className="bg-slate-950/80 border border-slate-800 rounded-2xl px-4 py-3 text-center">
+                          <span className="text-[10px] text-slate-400 font-semibold uppercase block">Empresas Ativas</span>
+                          <span className="text-2xl font-black text-indigo-400">{empresasLista.length}</span>
+                        </div>
+                        <div className="bg-slate-950/80 border border-slate-800 rounded-2xl px-4 py-3 text-center">
+                          <span className="text-[10px] text-slate-400 font-semibold uppercase block">Contas no Plano</span>
+                          <span className="text-2xl font-black text-emerald-400">{planoContasLista.length}</span>
+                        </div>
+                        <button
+                          onClick={handleExpurgarBancoDados}
+                          className="px-4 py-3 rounded-2xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-black shadow-lg shadow-rose-600/30 transition-all flex items-center gap-2 cursor-pointer"
+                          title="Varrer banco de dados e excluir todos os valores de todos os anos"
+                        >
+                          <span>🧹</span>
+                          <span>Varrer Banco & Excluir Valores</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    {msgEmpresaPlano && (
+                      <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-300 text-emerald-900 text-xs font-bold flex items-center justify-between shadow-sm">
+                        <span>{msgEmpresaPlano}</span>
+                        <button onClick={() => setMsgEmpresaPlano('')} className="text-emerald-700 hover:text-emerald-950 font-black">✕</button>
+                      </div>
+                    )}
+
+                    {/* GRID: 1. Cadastro de Empresas (Matriz e Filiais) */}
+                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                      {/* Formulário Cadastrar Empresa */}
+                      <div className="lg:col-span-5 bg-white border border-slate-200 rounded-2xl p-5 shadow-sm space-y-4">
+                        <div className="border-b border-slate-200 pb-3 flex items-center justify-between">
+                          <h3 className="text-sm font-extrabold text-slate-900 flex items-center gap-2">
+                            <span>🏢</span>
+                            <span>1. Cadastrar Matriz ou Filial</span>
+                          </h3>
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200">
+                            Vínculo Societário
+                          </span>
+                        </div>
+
+                        <form onSubmit={handleCadastrarEmpresa} className="space-y-3">
+                          <div className="grid grid-cols-2 gap-3">
+                            <div>
+                              <label className="block text-[11px] font-bold text-slate-700 mb-1">Tipo de Unidade:</label>
+                              <select
+                                value={novaEmpTipo}
+                                onChange={e => setNovaEmpTipo(e.target.value)}
+                                className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 focus:outline-none focus:border-indigo-500"
+                              >
+                                <option value="MATRIZ">🏛️ MATRIZ (Sede Principal)</option>
+                                <option value="FILIAL">🏬 FILIAL (Unidade Vinculada)</option>
+                              </select>
+                            </div>
+
+                            {novaEmpTipo === 'FILIAL' ? (
+                              <div>
+                                <label className="block text-[11px] font-bold text-slate-700 mb-1">Vinculada à Matriz:</label>
+                                <select
+                                  value={novaEmpMatrizId}
+                                  onChange={e => setNovaEmpMatrizId(e.target.value)}
+                                  className="w-full px-3 py-2 bg-indigo-50/60 border border-indigo-300 rounded-xl text-xs font-bold text-indigo-950 focus:outline-none focus:border-indigo-500"
+                                >
+                                  {empresasLista.filter(e => e.tipo === 'MATRIZ').map(m => (
+                                    <option key={m.id} value={m.id}>{m.nome_fantasia || m.razao_social}</option>
+                                  ))}
+                                </select>
+                              </div>
+                            ) : (
+                              <div>
+                                <label className="block text-[11px] font-bold text-slate-700 mb-1">Regime Tributário:</label>
+                                <select
+                                  value={novaEmpRegime}
+                                  onChange={e => setNovaEmpRegime(e.target.value)}
+                                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-indigo-500"
+                                >
+                                  <option value="Lucro Real">Lucro Real</option>
+                                  <option value="Lucro Presumido">Lucro Presumido</option>
+                                  <option value="Simples Nacional">Simples Nacional</option>
+                                </select>
+                              </div>
+                            )}
+                          </div>
+
+                          <div>
+                            <label className="block text-[11px] font-bold text-slate-700 mb-1">Razão Social:</label>
+                            <input
+                              type="text"
+                              required
+                              placeholder="Ex: Grupo Corporativo Brasil S.A. - Filial Sul"
+                              value={novaEmpRazao}
+                              onChange={e => setNovaEmpRazao(e.target.value)}
+                              className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-indigo-500"
+                            />
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-3">
+                            <div>
+                              <label className="block text-[11px] font-bold text-slate-700 mb-1">Nome Fantasia / Sigla:</label>
+                              <input
+                                type="text"
+                                placeholder="Ex: Filial 03 - Curitiba"
+                                value={novaEmpFantasia}
+                                onChange={e => setNovaEmpFantasia(e.target.value)}
+                                className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-indigo-500"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-[11px] font-bold text-slate-700 mb-1">CNPJ:</label>
+                              <input
+                                type="text"
+                                placeholder="00.000.000/0002-00"
+                                value={novaEmpCnpj}
+                                onChange={e => setNovaEmpCnpj(e.target.value)}
+                                className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-900 font-mono focus:outline-none focus:border-indigo-500"
+                              />
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-3 gap-3">
+                            <div className="col-span-2">
+                              <label className="block text-[11px] font-bold text-slate-700 mb-1">Cidade:</label>
+                              <input
+                                type="text"
+                                placeholder="Ex: São Paulo"
+                                value={novaEmpCidade}
+                                onChange={e => setNovaEmpCidade(e.target.value)}
+                                className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-indigo-500"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-[11px] font-bold text-slate-700 mb-1">UF:</label>
+                              <input
+                                type="text"
+                                maxLength={2}
+                                value={novaEmpUf}
+                                onChange={e => setNovaEmpUf(e.target.value.toUpperCase())}
+                                className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-900 font-bold text-center uppercase focus:outline-none focus:border-indigo-500"
+                              />
+                            </div>
+                          </div>
+
+                          <button
+                            type="submit"
+                            className="w-full py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 text-white text-xs font-black shadow-md shadow-indigo-500/20 transition-all cursor-pointer"
+                          >
+                            + Cadastrar {novaEmpTipo === 'MATRIZ' ? 'Matriz' : 'Filial Vinculada'}
+                          </button>
+                        </form>
+                      </div>
+
+                      {/* Lista de Empresas Cadastradas (Matriz e Filiais) */}
+                      <div className="lg:col-span-7 bg-white border border-slate-200 rounded-2xl p-5 shadow-sm flex flex-col justify-between space-y-4">
+                        <div>
+                          <div className="border-b border-slate-200 pb-3 flex items-center justify-between">
+                            <div>
+                              <h3 className="text-sm font-extrabold text-slate-900 flex items-center gap-2">
+                                <span>🗺️</span>
+                                <span>Estrutura Societária Ativa (Matriz & Filiais)</span>
+                              </h3>
+                              <p className="text-[11px] text-slate-500 mt-0.5">
+                                As filiais herdam automaticamente todas as contas contábeis cadastradas na Matriz.
+                              </p>
+                            </div>
+                            <span className="text-xs font-bold text-indigo-700 bg-indigo-50 px-2.5 py-1 rounded-lg border border-indigo-200">
+                              {empresasLista.filter(e => e.tipo === 'MATRIZ').length} Matriz • {empresasLista.filter(e => e.tipo === 'FILIAL').length} Filiais
+                            </span>
+                          </div>
+
+                          <div className="mt-4 space-y-3 max-h-[320px] overflow-y-auto pr-1">
+                            {empresasLista.map((emp) => {
+                              const ehMatriz = emp.tipo === 'MATRIZ';
+                              const totalContasMatriz = planoContasLista.filter(c => c.escopo === 'MATRIZ' || c.propagar_filiais).length;
+                              const totalContasProprias = planoContasLista.filter(c => c.escopo === emp.id).length;
+                              return (
+                                <div
+                                  key={emp.id}
+                                  className={`p-3.5 rounded-xl border transition-all flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 ${
+                                    ehMatriz
+                                      ? 'bg-amber-50/70 border-amber-300 shadow-sm'
+                                      : 'bg-slate-50 border-slate-200 hover:border-indigo-300 ml-0 sm:ml-6'
+                                  }`}
+                                >
+                                  <div className="space-y-1">
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                      <span className={`px-2 py-0.5 rounded-md text-[10px] font-black uppercase ${
+                                        ehMatriz
+                                          ? 'bg-amber-500 text-slate-950'
+                                          : 'bg-indigo-600 text-white'
+                                      }`}>
+                                        {ehMatriz ? '🏛️ MATRIZ' : '↳ 🏬 FILIAL'}
+                                      </span>
+                                      <span className="text-xs font-extrabold text-slate-900">
+                                        {emp.nome_fantasia || emp.razao_social}
+                                      </span>
+                                      <span className="text-[11px] font-mono text-slate-500">
+                                        CNPJ: {emp.cnpj}
+                                      </span>
+                                    </div>
+                                    <div className="text-[11px] text-slate-600 flex items-center gap-3 flex-wrap">
+                                      <span>Razão: <strong>{emp.razao_social}</strong></span>
+                                      <span>•</span>
+                                      <span>Local: {emp.cidade}/{emp.uf}</span>
+                                      <span>•</span>
+                                      <span className="text-emerald-700 font-bold">
+                                        {ehMatriz
+                                          ? `📋 ${totalContasMatriz} contas mestras (propagadas p/ filiais)`
+                                          : `🔗 Herda ${totalContasMatriz} contas da Matriz + ${totalContasProprias} próprias`}
+                                      </span>
+                                    </div>
+                                  </div>
+
+                                  <div className="flex items-center gap-2 shrink-0">
+                                    <button
+                                      onClick={() => setEmpresaSelecionadaFiltro(emp.id)}
+                                      className="px-2.5 py-1 rounded-lg bg-white hover:bg-indigo-50 text-indigo-700 border border-indigo-200 text-[11px] font-bold transition-colors cursor-pointer"
+                                    >
+                                      Ver Plano Efetivo
+                                    </button>
+                                    {!ehMatriz && (
+                                      <button
+                                        onClick={() => handleRemoverEmpresa(emp.id)}
+                                        className="px-2 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-[11px] font-bold transition-colors cursor-pointer"
+                                        title="Remover Filial"
+                                      >
+                                        🗑️
+                                      </button>
+                                    )}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* SEÇÃO 2: Plano de Contas Multi-Empresas (Herança Automática Matriz -> Filiais) */}
+                    <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-5">
+                      <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 border-b border-slate-200 pb-4">
+                        <div>
+                          <h3 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
+                            <span>📚</span>
+                            <span>2. Plano de Contas Multi-Empresas (Com Propagação Matriz ➔ Filiais)</span>
+                          </h3>
+                          <p className="text-xs text-slate-500 mt-0.5">
+                            Ao cadastrar uma conta na <strong>Matriz</strong>, ela passa a valer automaticamente para todas as Filiais e alimenta a amarração contábil do JEV.
+                          </p>
+                        </div>
+
+                        {/* Filtro de Visão por Empresa */}
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-bold text-slate-700">Visualizar Plano de:</span>
+                          <select
+                            value={empresaSelecionadaFiltro}
+                            onChange={e => setEmpresaSelecionadaFiltro(e.target.value)}
+                            className="px-3 py-1.5 bg-indigo-50 border border-indigo-300 rounded-xl text-xs font-bold text-indigo-950 focus:outline-none"
+                          >
+                            <option value="CONSOLIDADO">🌐 Todas as Contas (Matriz + Filiais)</option>
+                            {empresasLista.map(emp => (
+                              <option key={emp.id} value={emp.id}>
+                                {emp.tipo === 'MATRIZ' ? '🏛️ ' : '🏬 '}{emp.nome_fantasia || emp.razao_social} (Plano Efetivo)
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+
+                      {/* Formulário de Cadastro de Conta no Plano Multi-Empresas */}
+                      <form onSubmit={handleCadastrarContaPlano} className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3">
+                          <div className="lg:col-span-1">
+                            <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                              Escopo / Empresa:
+                            </label>
+                            <select
+                              value={novaContaEscopo}
+                              onChange={e => setNovaContaEscopo(e.target.value)}
+                              className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-900 focus:outline-none focus:border-indigo-500"
+                            >
+                              <option value="MATRIZ">🏛️ MATRIZ (Vale p/ Filiais)</option>
+                              {empresasLista.filter(e => e.tipo === 'FILIAL').map(f => (
+                                <option key={f.id} value={f.id}>🏬 Só {f.nome_fantasia || f.razao_social}</option>
+                              ))}
+                            </select>
+                          </div>
+
+                          <div className="lg:col-span-1">
+                            <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                              Código Contábil:
+                            </label>
+                            <input
+                              type="text"
+                              required
+                              placeholder="Ex: 3.1.01.005"
+                              value={novaContaCodigo}
+                              onChange={e => setNovaContaCodigo(e.target.value)}
+                              className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-mono text-slate-900 focus:outline-none focus:border-indigo-500"
+                            />
+                          </div>
+
+                          <div className="lg:col-span-2">
+                            <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                              Nome / Descrição da Conta Contábil:
+                            </label>
+                            <input
+                              type="text"
+                              required
+                              placeholder="Ex: Receita de Vendas E-Commerce Matriz & Filiais"
+                              value={novaContaNome}
+                              onChange={e => setNovaContaNome(e.target.value)}
+                              className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-indigo-500"
+                            />
+                          </div>
+
+                          <div className="lg:col-span-1">
+                            <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                              Demonstração:
+                            </label>
+                            <select
+                              value={novaContaDemonstracao}
+                              onChange={e => {
+                                const dem = e.target.value;
+                                setNovaContaDemonstracao(dem);
+                                if (dem === 'BALANCO') {
+                                  setNovaContaDestinoId('ativo_circulante');
+                                } else {
+                                  setNovaContaDestinoId('vendas_mercadorias');
+                                }
+                              }}
+                              className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-900 focus:outline-none focus:border-indigo-500"
+                            >
+                              <option value="DRE">📈 DRE (Resultado)</option>
+                              <option value="BALANCO">⚖️ Balanço Patrimonial</option>
+                            </select>
+                          </div>
+
+                          <div className="lg:col-span-1">
+                            <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                              Amarração Destino:
+                            </label>
+                            {novaContaDemonstracao === 'BALANCO' ? (
+                              <select
+                                value={novaContaDestinoId}
+                                onChange={e => setNovaContaDestinoId(e.target.value)}
+                                className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-indigo-500"
+                              >
+                                <option value="ativo_circulante">Ativo Circulante</option>
+                                <option value="ativo_nao_circulante">Ativo Não Circulante</option>
+                                <option value="passivo_circulante">Passivo Circulante</option>
+                                <option value="passivo_nao_circulante">Passivo Não Circulante</option>
+                                <option value="patrimonio_liquido">Patrimônio Líquido (PL)</option>
+                              </select>
+                            ) : (
+                              <select
+                                value={novaContaDestinoId}
+                                onChange={e => setNovaContaDestinoId(e.target.value)}
+                                className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-indigo-500"
+                              >
+                                <option value="vendas_mercadorias">1.01 Vendas de Mercadorias</option>
+                                <option value="vendas_canceladas">2.01 (-) Vendas Canceladas</option>
+                                <option value="imposto_incidente">2.02 (-) Imposto s/ Vendas</option>
+                                <option value="icms_vendas">2.03 (-) ICMS s/ Vendas</option>
+                                <option value="pis_vendas">2.04 (-) PIS s/ Vendas</option>
+                                <option value="cofins_vendas">2.05 (-) COFINS s/ Vendas</option>
+                                <option value="custo_mercadoria">4.01 (-) CMV / Custo Mercadoria</option>
+                                <option value="salarios_ordenados">6.01 (-) Salários e Ordenados</option>
+                                <option value="fgts">6.02 (-) FGTS</option>
+                                <option value="inss">6.02 (-) INSS</option>
+                                <option value="energia">6.07 (-) Energia Elétrica</option>
+                                <option value="aluguel_predial">6.07 (-) Aluguel Predial</option>
+                                <option value="honorarios_contabeis">6.10 (-) Honorários Contábeis</option>
+                                <option value="tarifas_bancarias">6.11 (-) Tarifas Bancárias</option>
+                                <option value="rendimento_aplicacao">8.01 (+) Rendimento Aplicação</option>
+                                <option value="prov_irpj">10.01 (-) Provisão IRPJ</option>
+                                <option value="prov_csll">10.02 (-) Provisão CSLL</option>
+                              </select>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pt-1">
+                          <div className="flex items-center gap-2 text-xs text-slate-700">
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-100 text-emerald-900 font-bold text-[11px]">
+                              🔗 Propagação Automática Ativa:
+                            </span>
+                            <span className="text-[11px] text-slate-600">
+                              Contas cadastradas na <strong>Matriz</strong> surtem efeito imediato na Matriz e em todas as Filiais.
+                            </span>
+                          </div>
+
+                          <button
+                            type="submit"
+                            className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white text-xs font-black shadow-md shadow-emerald-500/20 transition-all cursor-pointer shrink-0"
+                          >
+                            + Cadastrar Conta no Plano & Propagar para Filiais
+                          </button>
+                        </div>
+                      </form>
+
+                      {/* Tabela do Plano de Contas Efetivo */}
+                      <div className="space-y-3">
+                        <div className="flex flex-col sm:flex-row justify-between items-center gap-3">
+                          <input
+                            type="text"
+                            placeholder="Filtrar por código ou nome da conta..."
+                            value={buscaPlanoContas}
+                            onChange={e => setBuscaPlanoContas(e.target.value)}
+                            className="w-full sm:w-80 px-3.5 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-indigo-500"
+                          />
+                          <span className="text-[11px] font-bold text-slate-500">
+                            Exibindo contas ativas com amarração contábil verificada pelo Auditor Goldfish
+                          </span>
+                        </div>
+
+                        <div className="overflow-x-auto border border-slate-200 rounded-xl">
+                          <table className="w-full text-left text-xs">
+                            <thead className="bg-slate-100 text-slate-700 font-bold uppercase text-[11px] border-b border-slate-200">
+                              <tr>
+                                <th className="py-3 px-4">Código</th>
+                                <th className="py-3 px-4 min-w-[220px]">Nome da Conta Contábil</th>
+                                <th className="py-3 px-4">Demonstração</th>
+                                <th className="py-3 px-4">Amarração na Matriz / Balanço</th>
+                                <th className="py-3 px-4">Abrangência (Matriz / Filiais)</th>
+                                <th className="py-3 px-4 text-center">Ações</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-200">
+                              {planoContasLista
+                                .filter(c => {
+                                  if (empresaSelecionadaFiltro !== 'CONSOLIDADO') {
+                                    const empObj = empresasLista.find(e => e.id === empresaSelecionadaFiltro);
+                                    if (empObj && empObj.tipo === 'MATRIZ') {
+                                      if (c.escopo !== 'MATRIZ' && c.escopo !== empObj.id) return false;
+                                    } else if (empObj && empObj.tipo === 'FILIAL') {
+                                      if (c.escopo !== 'MATRIZ' && c.escopo !== empObj.id && !c.propagar_filiais) return false;
+                                    }
+                                  }
+                                  if (!buscaPlanoContas.trim()) return true;
+                                  const termo = buscaPlanoContas.toLowerCase();
+                                  return (
+                                    (c.codigo_contabil || '').toLowerCase().includes(termo) ||
+                                    (c.nome_conta || '').toLowerCase().includes(termo)
+                                  );
+                                })
+                                .map((c) => {
+                                  const ehGlobalMatriz = c.escopo === 'MATRIZ' || c.propagar_filiais;
+                                  return (
+                                    <tr key={c.id} className="hover:bg-slate-50 transition-colors">
+                                      <td className="py-2.5 px-4 font-mono font-bold text-indigo-900">
+                                        {c.codigo_contabil}
+                                      </td>
+                                      <td className="py-2.5 px-4 font-bold text-slate-900">
+                                        {c.nome_conta}
+                                      </td>
+                                      <td className="py-2.5 px-4">
+                                        <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${
+                                          c.demonstracao === 'BALANCO'
+                                            ? 'bg-purple-100 text-purple-900 border border-purple-300'
+                                            : 'bg-cyan-100 text-cyan-900 border border-cyan-300'
+                                        }`}>
+                                          {c.demonstracao}
+                                        </span>
+                                      </td>
+                                      <td className="py-2.5 px-4 font-mono text-[11px] text-amber-900">
+                                        <span className="px-2.5 py-1 rounded-lg bg-amber-50 border border-amber-300 font-semibold">
+                                          {c.conta_destino_matriz_id}
+                                        </span>
+                                      </td>
+                                      <td className="py-2.5 px-4">
+                                        {ehGlobalMatriz ? (
+                                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-900 border border-emerald-300">
+                                            🏛️ Matriz ➔ Efeito em Todas as Filiais
+                                          </span>
+                                        ) : (
+                                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-300">
+                                            🏬 Específica da Filial ({c.escopo})
+                                          </span>
+                                        )}
+                                      </td>
+                                      <td className="py-2.5 px-4 text-center">
+                                        <button
+                                          onClick={() => handleRemoverContaPlano(c.id)}
+                                          className="px-2.5 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-semibold transition-all cursor-pointer"
+                                          title="Remover Conta"
+                                        >
+                                          🗑️
+                                        </button>
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 {/* Conteúdo da Aba Módulo de Ensino JEV */}
                 {activeTab === 'ensino_jev' && (
@@ -1346,10 +2085,18 @@
                           <button
                             onClick={() => handleLimparTrimestre('todos')}
                             className="px-3 py-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 border border-rose-300 text-rose-800 text-xs font-black transition-all shadow-sm active:scale-95 cursor-pointer flex items-center gap-1"
-                            title="Zerar todos os trimestres"
+                            title="Zerar todos os trimestres do ano selecionado"
                           >
                             <span>🗑️</span>
                             <span>Zerar Tudo</span>
+                          </button>
+                          <button
+                            onClick={handleExpurgarBancoDados}
+                            className="px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 border border-rose-700 text-white text-xs font-black transition-all shadow-sm active:scale-95 cursor-pointer flex items-center gap-1"
+                            title="Varrer banco de dados e excluir todos os valores de todos os anos (2026, 2025, 2024, 2023)"
+                          >
+                            <span>🧹</span>
+                            <span>Varrer Banco (Todos os Anos)</span>
                           </button>
                         </div>
                       </div>

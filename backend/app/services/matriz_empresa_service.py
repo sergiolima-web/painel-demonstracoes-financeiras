@@ -520,33 +520,94 @@ class ConglutinadorJevService:
 
         # Identificação prévia se a lista de contas importadas contém detalhamento analítico
         todas_desc = [_normalizar(c.get("conta", "")) for c in itens_contabeis]
+        todos_codigos = [str(c.get("codigo", "")).strip().rstrip(".") for c in itens_contabeis if str(c.get("codigo", "")).strip()]
+
         tem_detalhe_impostos = any(any(k in d for k in ["icms", "pis", "cofins"]) for d in todas_desc)
         tem_detalhe_pessoal = sum(1 for d in todas_desc if any(k in d for k in ["salarios", "ferias", "13", "gratificac", "rescis", "hora extra", "dsr", "estagio", "quinquenio"])) >= 2
 
-        def _eh_subtotal_calculado(desc: str) -> bool:
+        # Verifica para cada grupo/subgrupo da matriz se existem contas analíticas filhas presentes na planilha
+        grupos_com_filhas_presentes = set()
+        nomes_exatos_grupos_pais = {}
+
+        def _registrar_grupo_e_checar_filhas(node_grupo: Dict[str, Any]):
+            g_id = node_grupo["id"]
+            g_nome_norm = _normalizar(node_grupo["conta"])
+            nomes_exatos_grupos_pais[g_nome_norm] = g_id
+            for sin_g in node_grupo.get("sinonimos", []):
+                nomes_exatos_grupos_pais[_normalizar(sin_g)] = g_id
+
+            filhos_lista = node_grupo.get("filhos", [])
+            # Conta quantas contas da planilha batem especificamente nas filhas (e não apenas no nome do grupo pai)
+            matches_filhas = 0
+            for f in filhos_lista:
+                f_nome_norm = _normalizar(f["conta"])
+                f_sins = [_normalizar(s) for s in f.get("sinonimos", []) if _normalizar(s) != g_nome_norm]
+                for d in todas_desc:
+                    if d == g_nome_norm:
+                        continue
+                    if d == f_nome_norm or any(s and s in d for s in f_sins):
+                        matches_filhas += 1
+                        break
+            if matches_filhas >= 1:
+                grupos_com_filhas_presentes.add(g_id)
+
+        for item_pai in self.matriz_padrao:
+            if "filhos" in item_pai:
+                _registrar_grupo_e_checar_filhas(item_pai)
+            if "subgrupos" in item_pai:
+                nomes_exatos_grupos_pais[_normalizar(item_pai["conta"])] = item_pai["id"]
+                for sg in item_pai["subgrupos"]:
+                    _registrar_grupo_e_checar_filhas(sg)
+
+        def _eh_codigo_pai_sintetico(cod_atual: str) -> bool:
+            if not cod_atual:
+                return False
+            c_limpo = cod_atual.strip().rstrip(".")
+            if not c_limpo:
+                return False
+            for outro in todos_codigos:
+                if outro != c_limpo and outro.startswith(c_limpo + "."):
+                    return True
+            return False
+
+        def _eh_subtotal_calculado(desc: str, cod: str = "") -> bool:
+            if _eh_codigo_pai_sintetico(cod):
+                return True
             d_norm = _normalizar(desc)
             if desc.strip().startswith("(=)") or desc.strip().startswith("( = )") or desc.strip().startswith("(= )") or desc.strip().startswith("( ="):
                 return True
             termos_subtotais = [
                 "receita liquida", "receita operacional liquida",
                 "lucro bruto", "resultado operacional bruto", "resultado bruto",
-                "lucro operacional", "resultado operacional antes",
+                "lucro operacional", "lucro operacional liquido", "resultado operacional antes",
                 "resultado liquido do exercicio", "lucro liquido", "resultado liquido",
                 "deducao da receita bruta", "deducoes da receita bruta",
-                "despesas operacionais", "despesas operacionais e administ"
+                "despesas operacionais", "despesas operacionais e administ",
+                "resultado nao operacional", "encargos sociais e trabalhistas",
+                "material e manutencao", "demais despesas administrativas",
+                "servicos prestados pj pf", "resultado financeiro liquido",
+                "despesas indedutiveis", "receitas financeiras", "despesas financeiras"
             ]
             for t in termos_subtotais:
-                if d_norm == t or d_norm.startswith(f"{t} ") or d_norm == f"total {t}" or d_norm == f"total de {t}" or d_norm == f"total da {t}":
+                if d_norm == t or d_norm == f"total {t}" or d_norm == f"total de {t}" or d_norm == f"total da {t}":
+                    return True
+            # Se a descrição for exatamente o título de um grupo que já possui contas analíticas filhas na planilha,
+            # ignora a linha sintética do grupo para jamais duplicar valores!
+            if d_norm in nomes_exatos_grupos_pais:
+                g_id = nomes_exatos_grupos_pais[d_norm]
+                if g_id in grupos_com_filhas_presentes:
                     return True
             return False
 
         # 2. Varre as contas importadas e distribui por semântica JEV
         for conta_importada in itens_contabeis:
             desc_original = conta_importada.get("conta", "").strip()
-            nome_norm = _normalizar(desc_original + " " + conta_importada.get("codigo", ""))
+            cod_original = str(conta_importada.get("codigo", "")).strip()
+            desc_sem_cod_norm = _normalizar(desc_original)
+            nome_norm = _normalizar(desc_original + " " + cod_original)
 
-            # Se for uma linha sintética de subtotal calculado pela DRE, pula a conglutinação analítica
-            if _eh_subtotal_calculado(desc_original):
+            # Se for uma linha sintética de subtotal ou grupo pai já detalhado na DRE, pula a conglutinação analítica
+            if _eh_subtotal_calculado(desc_original, cod_original):
                 continue
 
             # Se for a conta agregadora "Impostos Incidentes" e já temos detalhe de ICMS/PIS/COFINS, pula para não duplicar
@@ -581,12 +642,17 @@ class ConglutinadorJevService:
             else:
                 v_total = abs(s_atual)
 
-            # 2.1 Verifica primeiro as regras personalizadas / cadastradas pelo usuário (De-Para JEV)
+            # 2.1 Verifica primeiro as regras personalizadas / Plano de Contas (Matriz & Filiais)
             encontrado = False
             for regra in self.regras_personalizadas:
                 t_norm = regra.get("termo_normalizado", "")
+                cod_regra = str(regra.get("codigo_origem", "")).strip()
                 c_id = regra.get("conta_matriz_id", "")
-                if t_norm and (t_norm in nome_norm or nome_norm in t_norm) and c_id in valores_por_id:
+                if c_id not in valores_por_id:
+                    continue
+                match_cod = bool(cod_regra and cod_original and cod_regra == cod_original)
+                match_termo = bool(t_norm and (t_norm == desc_sem_cod_norm or t_norm in nome_norm or desc_sem_cod_norm in t_norm))
+                if match_cod or match_termo:
                     valores_por_id[c_id]["1T"] += v_1t
                     valores_por_id[c_id]["2T"] += v_2t
                     valores_por_id[c_id]["3T"] += v_3t
@@ -598,15 +664,19 @@ class ConglutinadorJevService:
             if encontrado:
                 continue
 
-            # 2.2 Procura melhor correspondência semântica na matriz padrão
+            # 2.2 Procura melhor correspondência semântica na matriz padrão (priorizando igualdade exata)
             candidatos = []
             for item_pai in self.matriz_padrao:
                 if "filhos" in item_pai:
                     for f in item_pai["filhos"]:
                         sinonimos = [_normalizar(s) for s in f.get("sinonimos", [])]
                         conta_f_norm = _normalizar(f["conta"])
-                        for sin in sinonimos + [conta_f_norm]:
-                            if sin and (sin in nome_norm or nome_norm == sin):
+                        for sin in [conta_f_norm] + sinonimos:
+                            if not sin:
+                                continue
+                            if desc_sem_cod_norm == sin or nome_norm == sin:
+                                candidatos.append((1000 + len(sin), f["id"]))
+                            elif sin in nome_norm:
                                 candidatos.append((len(sin), f["id"]))
                 if "subgrupos" in item_pai:
                     for sg in item_pai["subgrupos"]:
@@ -614,8 +684,12 @@ class ConglutinadorJevService:
                             for f in sg["filhos"]:
                                 sinonimos = [_normalizar(s) for s in f.get("sinonimos", [])]
                                 conta_f_norm = _normalizar(f["conta"])
-                                for sin in sinonimos + [conta_f_norm]:
-                                    if sin and (sin in nome_norm or nome_norm == sin):
+                                for sin in [conta_f_norm] + sinonimos:
+                                    if not sin:
+                                        continue
+                                    if desc_sem_cod_norm == sin or nome_norm == sin:
+                                        candidatos.append((1000 + len(sin), f["id"]))
+                                    elif sin in nome_norm:
                                         candidatos.append((len(sin), f["id"]))
 
             # Tratamento especial de alta precisão para termos clássicos

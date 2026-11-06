@@ -599,7 +599,7 @@ def processar_demonstracoes_com_jev(
                                 "4T": 0.0,
                                 "anual": 0.0
                             },
-                            "saldos_anuais": {ano_principal: 0.0, ano_secundario: saldo_ant_bloco}
+                            "saldos_anuais": {ano_principal: 0.0, ano_secundario: 0.0 if ano_destino else saldo_ant_bloco}
                         }
 
                     # Aloca o saldo estritamente no trimestre autorizado
@@ -612,7 +612,7 @@ def processar_demonstracoes_com_jev(
                                 mapa_contas_unificadas[chave_conta]["saldos_trimestrais"][t_cand] = saldo_bloco
                                 break
 
-                    if saldo_ant_bloco != 0:
+                    if saldo_ant_bloco != 0 and not ano_destino:
                         mapa_contas_unificadas[chave_conta]["saldo_anterior"] = saldo_ant_bloco
                         mapa_contas_unificadas[chave_conta]["saldos_anuais"][ano_secundario] = saldo_ant_bloco
 
@@ -666,10 +666,10 @@ def processar_demonstracoes_com_jev(
                 s_4t = _limpar_valor_numerico_universal(row.get(cols_trim.get('4T'))) if ('4T' in cols_trim and '4T' in trim_permitidos_set) else 0.0
 
                 # Se a planilha não possuía colunas de trimestres, mas tinha uma única coluna de saldo atual,
-                # e há trimestres permitidos, não inventamos percentuais! Apenas distribuímos igualmente se autorizado, ou deixamos 0.0
+                # e há trimestres permitidos, alocamos no primeiro trimestre autorizado para manter amarração 100% fiel
                 if not cols_trim and saldo_atual != 0.0:
-                    if len(trim_permitidos_set) == 1:
-                        t_unico = list(trim_permitidos_set)[0]
+                    if len(trim_permitidos_set) >= 1:
+                        t_unico = sorted(list(trim_permitidos_set))[0]
                         if t_unico == '1T': s_1t = saldo_atual
                         elif t_unico == '2T': s_2t = saldo_atual
                         elif t_unico == '3T': s_3t = saldo_atual
@@ -691,20 +691,20 @@ def processar_demonstracoes_com_jev(
                 else:
                     saldo_final = saldo_atual
 
-                # Extração de Saldos Multi-Ano
-                saldos_anuais = {}
-                if cols_anos:
-                    for ano_k, col_ano_k in cols_anos.items():
-                        val_k = _limpar_valor_numerico_universal(row.get(col_ano_k))
-                        if val_k is not None:
-                            saldos_anuais[ano_k] = val_k
-                if not saldos_anuais:
+                # Extração de Saldos Multi-Ano com Isolamento Estrito por ano_destino
+                saldos_anuais = {a: 0.0 for a in ["2026", "2025", "2024", "2023"]}
+                if ano_destino and str(ano_destino).strip():
+                    # Se o usuário escolheu explicitamente o ano_destino (ex: 2026),
+                    # APENAS o ano escolhido recebe o saldo importado! Nenhum outro ano é contaminado!
                     saldos_anuais[ano_principal] = saldo_final
-                    saldos_anuais[ano_secundario] = saldo_ant
                 else:
-                    if ano_principal not in saldos_anuais:
-                        saldos_anuais[ano_principal] = saldo_final
-                    if ano_secundario not in saldos_anuais:
+                    if cols_anos:
+                        for ano_k, col_ano_k in cols_anos.items():
+                            val_k = _limpar_valor_numerico_universal(row.get(col_ano_k))
+                            if val_k is not None:
+                                saldos_anuais[ano_k] = val_k
+                    saldos_anuais[ano_principal] = saldo_final
+                    if ano_secundario not in saldos_anuais or saldos_anuais[ano_secundario] == 0.0:
                         saldos_anuais[ano_secundario] = saldo_ant
 
                 if len(desc_raw) >= 2:
@@ -771,39 +771,91 @@ def processar_demonstracoes_com_jev(
             "badge_ia": decisao["badge"]
         })
 
+    todos_codigos_bp = [str(c.get("codigo", "")).strip().rstrip(".") for c in contas_processadas if str(c.get("codigo", "")).strip()]
+
+    def _eh_conta_sintetica_bp(c: Dict[str, Any]) -> bool:
+        cod = str(c.get("codigo", "")).strip().rstrip(".")
+        desc_norm = _normalizar_texto(c.get("conta", ""))
+        # 1. Se o código for pai de outra conta presente no balanço (ex: '1' é pai de '1.1', '1.1' é pai de '1.1.01')
+        if cod:
+            for outro in todos_codigos_bp:
+                if outro != cod and outro.startswith(cod + "."):
+                    return True
+        # 2. Títulos totalizadores sintéticos clássicos
+        titulos_sinteticos = {
+            "ativo", "ativo total", "total do ativo", "total ativo",
+            "ativo circulante", "total do ativo circulante",
+            "ativo nao circulante", "total do ativo nao circulante",
+            "passivo", "passivo total", "total do passivo", "total passivo",
+            "passivo e patrimonio liquido", "total do passivo e patrimonio liquido",
+            "passivo circulante", "total do passivo circulante",
+            "passivo nao circulante", "total do passivo nao circulante",
+            "patrimonio liquido", "total do patrimonio liquido"
+        }
+        if desc_norm in titulos_sinteticos and len(contas_processadas) > 6:
+            return True
+        return False
+
     def _classificar_grupo_balanco(c):
         cod = str(c.get("codigo", "")).strip()
-        g = c.get("grupo", "").lower()
-        desc = c.get("conta", "").lower()
-        if cod.startswith("1.01") or cod.startswith("1.1"): return "ativo_circulante"
-        if cod.startswith("1.02") or cod.startswith("1.2"): return "ativo_nao_circulante"
-        if cod.startswith("2.01") or cod.startswith("2.1"): return "passivo_circulante"
-        if cod.startswith("2.02") or cod.startswith("2.2"): return "passivo_nao_circulante"
-        if cod.startswith("3."): return "patrimonio_liquido"
-        if "ativo circulante" in g: return "ativo_circulante"
-        if "ativo não circulante" in g or "ativo nao circulante" in g: return "ativo_nao_circulante"
-        if "passivo circulante" in g: return "passivo_circulante"
-        if "passivo não circulante" in g or "passivo nao circulante" in g: return "passivo_nao_circulante"
-        if "patrimônio líquido" in g or "patrimonio liquido" in g: return "patrimonio_liquido"
-        if any(w in desc for w in ['capital', 'reserva', 'lucro acumulado', 'patrimônio']): return "patrimonio_liquido"
-        if any(w in desc for w in ['longo prazo', 'não circulante']): return "passivo_nao_circulante" if any(w in desc for w in ['financiamento', 'empréstimo']) else "ativo_nao_circulante"
-        if any(w in desc for w in ['imobilizado', 'investimento', 'intangível']): return "ativo_nao_circulante"
-        if any(w in desc for w in ['fornecedor', 'salário', 'tributo']): return "passivo_circulante"
+        g = _normalizar_texto(c.get("grupo", ""))
+        desc = _normalizar_texto(c.get("conta", ""))
+
+        # Prioridade 1: Patrimônio Líquido (Códigos 2.03, 2.3, 2.04, 2.4, 3.x ou termos de PL)
+        if cod.startswith(("2.03", "2.3", "2.04", "2.4", "3")):
+            return "patrimonio_liquido"
+        if any(w in desc for w in ['patrimonio liquido', 'capital social', 'reserva de', 'reservas de', 'lucros acumulados', 'prejuizos acumulados', 'ajuste de avaliacao']):
+            return "patrimonio_liquido"
+
+        # Prioridade 2: Códigos estruturados de Ativo e Passivo
+        if cod.startswith(("1.01", "1.1")): return "ativo_circulante"
+        if cod.startswith(("1.02", "1.2", "1.03", "1.3")): return "ativo_nao_circulante"
+        if cod.startswith(("2.01", "2.1")): return "passivo_circulante"
+        if cod.startswith(("2.02", "2.2")): return "passivo_nao_circulante"
+
+        # Prioridade 3: Descrição semântica explícita antes de cair em grupo genérico
+        if any(w in desc for w in ['fornecedor', 'emprestimo', 'financiamento', 'obrigacoes', 'salarios a pagar', 'tributos a recolher', 'impostos a pagar', 'contas a pagar', 'provisao', 'dividendos a pagar']):
+            if any(w in desc for w in ['longo prazo', 'nao circulante']):
+                return "passivo_nao_circulante"
+            return "passivo_circulante"
+        if any(w in desc for w in ['imobilizado', 'intangivel', 'investimento', 'realizavel a longo prazo', 'depreciacao acumulada', 'amortizacao acumulada']):
+            return "ativo_nao_circulante"
+
+        # Prioridade 4: Se começa com 2, JAMAIS pode cair em ativo!
+        if cod.startswith("2"):
+            if "nao circulante" in desc or "longo prazo" in desc:
+                return "passivo_nao_circulante"
+            return "passivo_circulante"
+        if cod.startswith("1"):
+            if "nao circulante" in desc or "longo prazo" in desc:
+                return "ativo_nao_circulante"
+            return "ativo_circulante"
+
+        # Prioridade 5: Classificação do JEV
+        if "patrimonio liquido" in g: return "patrimonio_liquido"
+        if "passivo nao circulante" in g: return "passivo_nao_circulante"
+        if "passivo circulante" in g or "passivo" in g: return "passivo_circulante"
+        if "ativo nao circulante" in g: return "ativo_nao_circulante"
         return "ativo_circulante"
 
-    ativo_circulante = sum(c["saldo_atual"] for c in contas_processadas if _classificar_grupo_balanco(c) == "ativo_circulante")
-    ativo_nao_circulante = sum(c["saldo_atual"] for c in contas_processadas if _classificar_grupo_balanco(c) == "ativo_nao_circulante")
+    # Filtra apenas contas analíticas (folhas) para jamais duplicar somando conta sintética mãe + filhas
+    contas_analiticas_bp = [c for c in contas_processadas if not _eh_conta_sintetica_bp(c)]
+    if not contas_analiticas_bp:
+        contas_analiticas_bp = contas_processadas
+
+    ativo_circulante = sum(c["saldo_atual"] for c in contas_analiticas_bp if _classificar_grupo_balanco(c) == "ativo_circulante")
+    ativo_nao_circulante = sum(c["saldo_atual"] for c in contas_analiticas_bp if _classificar_grupo_balanco(c) == "ativo_nao_circulante")
     ativo_total = ativo_circulante + ativo_nao_circulante
 
-    passivo_circulante = sum(c["saldo_atual"] for c in contas_processadas if _classificar_grupo_balanco(c) == "passivo_circulante")
-    passivo_nao_circulante = sum(c["saldo_atual"] for c in contas_processadas if _classificar_grupo_balanco(c) == "passivo_nao_circulante")
-    patrimonio_liquido = sum(c["saldo_atual"] for c in contas_processadas if _classificar_grupo_balanco(c) == "patrimonio_liquido")
+    passivo_circulante = sum(c["saldo_atual"] for c in contas_analiticas_bp if _classificar_grupo_balanco(c) == "passivo_circulante")
+    passivo_nao_circulante = sum(c["saldo_atual"] for c in contas_analiticas_bp if _classificar_grupo_balanco(c) == "passivo_nao_circulante")
+    patrimonio_liquido = sum(c["saldo_atual"] for c in contas_analiticas_bp if _classificar_grupo_balanco(c) == "patrimonio_liquido")
     passivo_total = passivo_circulante + passivo_nao_circulante + patrimonio_liquido
 
-    disponibilidades = sum(c["saldo_atual"] for c in contas_processadas if "disponib" in c.get("grupo", "").lower() or any(w in c.get("conta", "").lower() for w in ['caixa', 'banco', 'aplica']))
-    estoques = sum(c["saldo_atual"] for c in contas_processadas if "estoque" in c.get("grupo", "").lower() or "estoque" in c.get("conta", "").lower())
+    disponibilidades = sum(c["saldo_atual"] for c in contas_analiticas_bp if "disponib" in c.get("grupo", "").lower() or any(w in c.get("conta", "").lower() for w in ['caixa', 'banco', 'aplica']))
+    estoques = sum(c["saldo_atual"] for c in contas_analiticas_bp if "estoque" in c.get("grupo", "").lower() or "estoque" in c.get("conta", "").lower())
     realizavel_longo_prazo = sum(
-        c["saldo_atual"] for c in contas_processadas 
+        c["saldo_atual"] for c in contas_analiticas_bp 
         if ("realizavel" in _normalizar_texto(c.get("conta", "")) or "longo prazo" in _normalizar_texto(c.get("conta", "")) or c.get("codigo", "").startswith("1.02.01") or c.get("codigo", "").startswith("1.2.1"))
         and "passivo" not in _normalizar_texto(c.get("grupo", ""))
     )
@@ -909,7 +961,12 @@ def processar_demonstracoes_com_jev(
         )
 
     # 5.1 Identificação e Cálculo de Múltiplos Anos (Exercícios Financeiros)
-    anos_set = set()
+    # Garante sempre a presença dos exercícios base (2026, 2025, 2024, 2023) para que nenhum ano suma ao importar
+    anos_set = {"2026", "2025", "2024", "2023"}
+    if ano_principal:
+        anos_set.add(str(ano_principal))
+    if ano_secundario:
+        anos_set.add(str(ano_secundario))
     for c in contas_processadas:
         anos_set.update(c.get("saldos_anuais", {}).keys())
     for it in itens_dre:
@@ -917,7 +974,7 @@ def processar_demonstracoes_com_jev(
     if anos_relatorio:
         anos_set.update(anos_relatorio)
 
-    anos_disponiveis = sorted(list(anos_set), reverse=True) if anos_set else [ano_principal, ano_secundario]
+    anos_disponiveis = sorted(list(anos_set), reverse=True)
     if ano_principal not in anos_disponiveis:
         anos_disponiveis = [ano_principal] + [a for a in anos_disponiveis if a != ano_principal]
 
@@ -948,9 +1005,9 @@ def processar_demonstracoes_com_jev(
 
     # 7. Destaques Estratégicos para Acionistas
     destaques_acionistas = []
-    if contas_processadas:
+    if contas_analiticas_bp:
         destaques_acionistas = sorted(
-            [c for c in contas_processadas if c["score_relevancia"] >= 1.5 or c["probabilidade_anomalia"] > 0.4],
+            [c for c in contas_analiticas_bp if c["score_relevancia"] >= 1.5 or c["probabilidade_anomalia"] > 0.4],
             key=lambda x: x["score_relevancia"],
             reverse=True
         )[:5]
@@ -982,7 +1039,7 @@ def processar_demonstracoes_com_jev(
     for ano_k in anos_disponiveis:
         # 8.1 Ajusta as contas para o ano_k específico
         contas_k = []
-        for c in (itens_dre + contas_processadas):
+        for c in (itens_dre + contas_analiticas_bp):
             s_k = c.get("saldos_anuais", {}).get(ano_k, (c.get("saldo_atual", 0.0) if ano_k == ano_principal else 0.0))
             c_copia = dict(c)
             c_copia["saldo_atual"] = s_k
@@ -999,14 +1056,14 @@ def processar_demonstracoes_com_jev(
             trimestres_permitidos=list(trim_permitidos_set) if ano_k == ano_principal and trimestres_permitidos else None
         )
 
-        # 8.3 Totais de Balanço para o ano_k
-        ac_k = sum(c.get("saldos_anuais", {}).get(ano_k, (c.get("saldo_atual", 0.0) if ano_k == ano_principal else 0.0)) for c in contas_processadas if _classificar_grupo_balanco(c) == "ativo_circulante")
-        anc_k = sum(c.get("saldos_anuais", {}).get(ano_k, (c.get("saldo_atual", 0.0) if ano_k == ano_principal else 0.0)) for c in contas_processadas if _classificar_grupo_balanco(c) == "ativo_nao_circulante")
-        disp_k = sum(c.get("saldos_anuais", {}).get(ano_k, (c.get("saldo_atual", 0.0) if ano_k == ano_principal else 0.0)) for c in contas_processadas if "disponib" in c.get("grupo", "").lower() or any(w in c.get("conta", "").lower() for w in ['caixa', 'banco', 'aplica']))
-        est_k = sum(c.get("saldos_anuais", {}).get(ano_k, (c.get("saldo_atual", 0.0) if ano_k == ano_principal else 0.0)) for c in contas_processadas if "estoque" in c.get("grupo", "").lower() or "estoque" in c.get("conta", "").lower())
-        pc_k = sum(c.get("saldos_anuais", {}).get(ano_k, (c.get("saldo_atual", 0.0) if ano_k == ano_principal else 0.0)) for c in contas_processadas if _classificar_grupo_balanco(c) == "passivo_circulante")
-        pnc_k = sum(c.get("saldos_anuais", {}).get(ano_k, (c.get("saldo_atual", 0.0) if ano_k == ano_principal else 0.0)) for c in contas_processadas if _classificar_grupo_balanco(c) == "passivo_nao_circulante")
-        pl_k = sum(c.get("saldos_anuais", {}).get(ano_k, (c.get("saldo_atual", 0.0) if ano_k == ano_principal else 0.0)) for c in contas_processadas if _classificar_grupo_balanco(c) == "patrimonio_liquido")
+        # 8.3 Totais de Balanço para o ano_k (estritamente sobre contas analíticas deduplicadas!)
+        ac_k = sum(c.get("saldos_anuais", {}).get(ano_k, (c.get("saldo_atual", 0.0) if ano_k == ano_principal else 0.0)) for c in contas_analiticas_bp if _classificar_grupo_balanco(c) == "ativo_circulante")
+        anc_k = sum(c.get("saldos_anuais", {}).get(ano_k, (c.get("saldo_atual", 0.0) if ano_k == ano_principal else 0.0)) for c in contas_analiticas_bp if _classificar_grupo_balanco(c) == "ativo_nao_circulante")
+        disp_k = sum(c.get("saldos_anuais", {}).get(ano_k, (c.get("saldo_atual", 0.0) if ano_k == ano_principal else 0.0)) for c in contas_analiticas_bp if "disponib" in c.get("grupo", "").lower() or any(w in c.get("conta", "").lower() for w in ['caixa', 'banco', 'aplica']))
+        est_k = sum(c.get("saldos_anuais", {}).get(ano_k, (c.get("saldo_atual", 0.0) if ano_k == ano_principal else 0.0)) for c in contas_analiticas_bp if "estoque" in c.get("grupo", "").lower() or "estoque" in c.get("conta", "").lower())
+        pc_k = sum(c.get("saldos_anuais", {}).get(ano_k, (c.get("saldo_atual", 0.0) if ano_k == ano_principal else 0.0)) for c in contas_analiticas_bp if _classificar_grupo_balanco(c) == "passivo_circulante")
+        pnc_k = sum(c.get("saldos_anuais", {}).get(ano_k, (c.get("saldo_atual", 0.0) if ano_k == ano_principal else 0.0)) for c in contas_analiticas_bp if _classificar_grupo_balanco(c) == "passivo_nao_circulante")
+        pl_k = sum(c.get("saldos_anuais", {}).get(ano_k, (c.get("saldo_atual", 0.0) if ano_k == ano_principal else 0.0)) for c in contas_analiticas_bp if _classificar_grupo_balanco(c) == "patrimonio_liquido")
 
         totais_balanco_por_ano[ano_k] = {
             "ativo_circulante": ac_k,

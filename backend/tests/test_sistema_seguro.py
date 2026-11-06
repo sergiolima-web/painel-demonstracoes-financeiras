@@ -365,6 +365,112 @@ def test_limpar_dados_trimestre_individual_recalcula():
         assert linha.get("val_1t", 0.0) == 0.0
 
 
+def test_expurgar_banco_dados_total_e_anos_fixos():
+    """
+    Valida que a varredura total do banco (/api/banco-dados/expurgar-tudo)
+    zera 100% dos valores e mantém todos os anos oficiais (2026, 2025, 2024, 2023) visíveis.
+    """
+    resp = client.post("/api/banco-dados/expurgar-tudo")
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert payload["status"] == "sucesso"
+    dados = payload["dados_atualizados"]
+    for ano_esperado in ["2026", "2025", "2024", "2023"]:
+        assert ano_esperado in dados["anos_disponiveis"]
+        assert dados["totais_balanco_por_ano"][ano_esperado]["ativo_total"] == 0.0
+        assert dados["totais_balanco_por_ano"][ano_esperado]["passivo_total"] == 0.0
+        assert dados["totais_dre_por_ano"][ano_esperado]["receita_bruta"] == 0.0
+        assert dados["totais_dre_por_ano"][ano_esperado]["lucro_liquido"] == 0.0
+
+
+def test_deduplicacao_sintetica_e_amarracao_balanco_goldfish():
+    """
+    Auditoria Goldfish EGM:
+    Garante que contas sintéticas de grupo ('1 - ATIVO', '1.1 - ATIVO CIRCULANTE', '2.3 - PATRIMÔNIO LÍQUIDO')
+    NÃO sejam somadas em duplicidade com suas filhas analíticas ('1.1.01', '2.1.01', '2.3.01'),
+    e que contas '2.3.x' sejam classificadas em 'patrimonio_liquido' (nunca em 'ativo_circulante').
+    """
+    csv_balanco = (
+        "Código;Conta;Saldo 2026\n"
+        "1;ATIVO TOTAL;32951436,12\n"
+        "1.1;ATIVO CIRCULANTE;32951436,12\n"
+        "1.1.01;Caixa e Equivalentes de Caixa;32951436,12\n"
+        "2;PASSIVO TOTAL;32951436,12\n"
+        "2.1;PASSIVO CIRCULANTE;22951436,12\n"
+        "2.1.01;Fornecedores Nacionais;22951436,12\n"
+        "2.3;PATRIMONIO LIQUIDO;10000000,00\n"
+        "2.3.01;Capital Social Integralizado;10000000,00\n"
+    )
+    arquivo_csv = io.BytesIO(csv_balanco.encode("utf-8"))
+    resp = client.post(
+        "/api/upload-demonstracao",
+        files={"file": ("balanco_2026.csv", arquivo_csv, "text/csv")},
+        data={"ano_destino": "2026", "trimestres_autorizados": '["1T","2T","3T","4T"]'}
+    )
+    assert resp.status_code == 200
+    dados = resp.json()
+
+    # Todos os anos devem permanecer disponíveis (2026, 2025, 2024, 2023)
+    for ano in ["2026", "2025", "2024", "2023"]:
+        assert ano in dados["anos_disponiveis"]
+
+    # Amarração exata sem duplicação de sintéticas:
+    totais_2026 = dados["totais_balanco_por_ano"]["2026"]
+    assert round(totais_2026["ativo_total"], 2) == 32951436.12
+    assert round(totais_2026["patrimonio_liquido"], 2) == 10000000.00
+    assert round(totais_2026["passivo_total"], 2) == 32951436.12
+
+
+def test_cadastro_matriz_filiais_e_propagacao_plano_contas():
+    """
+    Valida o cadastro de Filial vinculada à Matriz e a propagação automática
+    de uma conta cadastrada na Matriz para todas as Filiais e para o motor JEV.
+    """
+    # 1. Cadastra uma nova Filial
+    resp_emp = client.post("/api/empresas", json={
+        "tipo": "FILIAL",
+        "razao_social": "Grupo Corporativo - Filial Nordeste LTDA",
+        "nome_fantasia": "Filial 04 - Recife",
+        "cnpj": "12.345.678/0004-22",
+        "uf": "PE",
+        "cidade": "Recife",
+        "regime_tributario": "Lucro Real",
+        "matriz_id": "emp_matriz_01"
+    })
+    assert resp_emp.status_code == 200
+    filial_criada = resp_emp.json()["empresa"]
+    filial_id = filial_criada["id"]
+
+    # 2. Cadastra uma nova conta contábil na MATRIZ
+    resp_conta = client.post("/api/plano-contas", json={
+        "escopo": "MATRIZ",
+        "codigo_contabil": "3.1.01.099",
+        "nome_conta": "Receita Exclusiva Omnichannel Matriz",
+        "demonstracao": "DRE",
+        "natureza": "CREDORA",
+        "tipo_conta": "ANALITICA",
+        "conta_destino_matriz_id": "vendas_mercadorias",
+        "conta_destino_matriz_nome": "VENDAS DE MERCADORIAS",
+        "propagar_filiais": True
+    })
+    assert resp_conta.status_code == 200
+    conta_criada = resp_conta.json()["conta"]
+    conta_id = conta_criada["id"]
+
+    # 3. Consulta o plano efetivo da Filial recém-criada e verifica se a conta da Matriz surtiu efeito nela
+    resp_efetivo = client.get(f"/api/empresas-plano?empresa_id={filial_id}")
+    assert resp_efetivo.status_code == 200
+    plano_filial = resp_efetivo.json()["plano_efetivo_empresa"]
+    contas_filial_ids = [c["id"] for c in plano_filial["contas_efetivas"]]
+    assert conta_id in contas_filial_ids
+
+    # 4. Limpa os registros criados no teste
+    client.delete(f"/api/plano-contas/{conta_id}")
+    client.delete(f"/api/empresas/{filial_id}")
+    client.post("/api/banco-dados/expurgar-tudo")
+
+
+
 
 
 

@@ -10,6 +10,7 @@ from app.services.agente_langgraph_service import agente_langgraph
 from app.services.planilha_service import gerar_modelo_planilha_exemplo, processar_demonstracoes_com_jev
 from app.services.pdf_service import gerar_modelo_pdf_exemplo, processar_pdf_demonstracoes_com_jev
 from app.services.matriz_empresa_service import conglutinador_jev, ESTRUTURA_MATRIZ_PADRAO
+from app.services.empresas_plano_contas_service import empresas_plano_service
 from app.services.security_middleware import SecurityHeadersMiddleware, verificar_token_acesso
 from fastapi.staticfiles import StaticFiles
 
@@ -177,28 +178,100 @@ def baixar_modelo_pdf():
         headers={"Content-Disposition": "attachment; filename=Modelo_Balanco_DRE_Acionistas.pdf"}
     )
 
+def _criar_documento_zerado_limpo() -> dict:
+    """
+    Gera a estrutura contábil 100% zerada e limpa para todos os exercícios (2026, 2025, 2024, 2023),
+    garantindo que o banco de dados em memória nunca inicie com valores fantasmas ou resíduos não autorizados.
+    """
+    from app.services.calculos_indices import CalculadoraIndicesFinanceiros
+    anos_padrao = ["2026", "2025", "2024", "2023"]
+    matriz_vazia = conglutinador_jev.conglutinar_dados_na_matriz([])
+    balanco_vazio = {
+        "ativo_circulante": 0.0,
+        "ativo_nao_circulante": 0.0,
+        "ativo_total": 0.0,
+        "passivo_circulante": 0.0,
+        "passivo_nao_circulante": 0.0,
+        "patrimonio_liquido": 0.0,
+        "passivo_total": 0.0,
+        "disponibilidades": 0.0
+    }
+    dre_vazio = {"receita_bruta": 0.0, "lucro_liquido": 0.0}
+    indices_vazios = CalculadoraIndicesFinanceiros.calcular_todos_indices(
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
+    )
+    parecer_vazio = jev_service.gerar_solucoes_gestao_jev(
+        indices=indices_vazios,
+        totais_balanco=balanco_vazio,
+        totais_dre=dre_vazio
+    )
+
+    return {
+        "arquivo": "Base_Limpa_Corporativa",
+        "formato": "Sessão Limpa (Aguardando Importação)",
+        "tipo_documento": "Balanço & DRE Completo",
+        "aba_sugerida": "matriz",
+        "somente_dre": False,
+        "total_linhas_lidas": 0,
+        "balanco_equilibrado": True,
+        "diferenca_balanco": 0.0,
+        "totais_balanco": dict(balanco_vazio),
+        "totais_balanco_por_ano": {a: dict(balanco_vazio) for a in anos_padrao},
+        "totais_dre": dict(dre_vazio),
+        "totais_dre_por_ano": {a: dict(dre_vazio) for a in anos_padrao},
+        "indices_financeiros": dict(indices_vazios),
+        "indicadores_por_ano": {a: dict(indices_vazios) for a in anos_padrao},
+        "indicadores_por_periodo": {p: dict(indices_vazios) for p in ["1T", "2T", "3T", "4T", "anual"]},
+        "anos_disponiveis": list(anos_padrao),
+        "ano_ativo": "2026",
+        "trimestres_autorizados": ["1T", "2T", "3T", "4T"],
+        "parecer_gestao_jev": parecer_vazio,
+        "dre_matriz_empresa": matriz_vazia,
+        "dre_matriz_por_ano": {a: conglutinador_jev.conglutinar_dados_na_matriz([]) for a in anos_padrao},
+        "contas_detalhadas": [],
+        "itens_dre": [],
+        "destaques_acionistas": [],
+        "motor_ia": {
+            "icone": "⚡🧠",
+            "nome": "TypeSafe JEV (System 1 Decision Engine)",
+            "status": "Base de Dados Limpa e Pronta para Importação"
+        }
+    }
+
 @app.get("/api/dados-demonstracao-padrao")
 def obter_dados_padrao(_auth: bool = Depends(verificar_token_acesso)):
     """
-    Retorna o documento ativo atual (último arquivo importado) ou a demonstração de exemplo caso nenhum tenha sido carregado.
-    Preserva rigorosamente os estados de zeramento e cálculos já realizados na sessão.
+    Retorna o documento ativo atual (último arquivo importado) ou a estrutura limpa zerada.
+    Preserva rigorosamente os estados de zeramento e os anos disponíveis.
     """
     global ultimo_documento_ativo
-    if ultimo_documento_ativo is not None:
-        contas = ultimo_documento_ativo.get("contas_detalhadas", []) + ultimo_documento_ativo.get("itens_dre", [])
-        ano_principal = ultimo_documento_ativo.get("ano_ativo", "2026")
-        if contas and ano_principal in ultimo_documento_ativo.get("dre_matriz_por_ano", {}):
-            ultimo_documento_ativo["dre_matriz_empresa"] = ultimo_documento_ativo["dre_matriz_por_ano"][ano_principal]
-        return ultimo_documento_ativo
+    if ultimo_documento_ativo is None:
+        ultimo_documento_ativo = _criar_documento_zerado_limpo()
 
-    conteudo_bytes = gerar_modelo_planilha_exemplo()
-    ultimo_documento_ativo = processar_demonstracoes_com_jev(conteudo_bytes, "Demonstracoes_Exemplo_Acionistas.xlsx")
+    # Garante que os anos padrão nunca sumam da lista
+    anos_atuais = set(ultimo_documento_ativo.get("anos_disponiveis", []))
+    anos_atuais.update(["2026", "2025", "2024", "2023"])
+    ultimo_documento_ativo["anos_disponiveis"] = sorted(list(anos_atuais), reverse=True)
     return ultimo_documento_ativo
+
+@app.post("/api/banco-dados/expurgar-tudo")
+def expurgar_banco_dados_completo():
+    """
+    Varre o banco de dados em memória e exclui/zera absolutamente todos os valores
+    de todos os anos e trimestres, deixando a base 100% limpa.
+    """
+    global ultimo_documento_ativo
+    ultimo_documento_ativo = _criar_documento_zerado_limpo()
+    return {
+        "status": "sucesso",
+        "mensagem": "Varredura concluída: todos os valores de todos os anos e trimestres foram excluídos do banco de dados!",
+        "dados_atualizados": ultimo_documento_ativo
+    }
 
 @app.post("/api/resetar-dados-padrao")
 def resetar_dados_padrao():
     """
-    Reseta a visualização ativa para o modelo de exemplo original.
+    Carrega os dados da planilha modelo de demonstração para fins de teste/homologação.
     """
     global ultimo_documento_ativo
     conteudo_bytes = gerar_modelo_planilha_exemplo()
@@ -228,25 +301,31 @@ def limpar_dados_demonstracao(req: LimparDadosRequest):
     """
     global ultimo_documento_ativo
     if ultimo_documento_ativo is None:
-        conteudo_bytes = gerar_modelo_planilha_exemplo()
-        ultimo_documento_ativo = processar_demonstracoes_com_jev(conteudo_bytes, "Demonstracoes_Exemplo_Acionistas.xlsx")
+        ultimo_documento_ativo = _criar_documento_zerado_limpo()
 
     trim = req.trimestre.upper()
     eh_todos_anos = (not req.ano) or (req.ano == "todos_anos")
     
-    anos_disponiveis = ultimo_documento_ativo.get("anos_disponiveis", ["2026", "2025"])
+    # Se limpou TUDO em todos os anos, faz expurgo completo imediato!
+    if eh_todos_anos and trim == "TODOS":
+        ultimo_documento_ativo = _criar_documento_zerado_limpo()
+        return {
+            "status": "sucesso",
+            "mensagem": "Todos os dados e trimestres de TODOS OS EXERCÍCIOS foram zerados e excluídos com sucesso!",
+            "dados_atualizados": ultimo_documento_ativo
+        }
+
+    anos_disponiveis = ultimo_documento_ativo.get("anos_disponiveis", ["2026", "2025", "2024", "2023"])
     anos_afetados = list(anos_disponiveis) if eh_todos_anos else [req.ano]
     
     contas = ultimo_documento_ativo.get("contas_detalhadas", []) + ultimo_documento_ativo.get("itens_dre", [])
 
     if trim == "TODOS":
         for c in contas:
-            # Zera os saldos anuais de todos os anos afetados
             if "saldos_anuais" in c:
                 for ano in anos_afetados:
                     c["saldos_anuais"][ano] = 0.0
             
-            # Se limpou todos os anos ou o ano ativo da sessão, zera também os trimestrais e o saldo atual
             if eh_todos_anos or (ultimo_documento_ativo.get("ano_ativo") in anos_afetados):
                 if "saldos_trimestrais" in c:
                     c["saldos_trimestrais"]["1T"] = 0.0
@@ -256,7 +335,6 @@ def limpar_dados_demonstracao(req: LimparDadosRequest):
                     c["saldos_trimestrais"]["anual"] = 0.0
                 c["saldo_atual"] = 0.0
                 
-            # Se existir dicionário de trimestres por ano, zera para cada ano afetado
             if "saldos_trimestrais_por_ano" in c:
                 for ano in anos_afetados:
                     c["saldos_trimestrais_por_ano"][ano] = {"1T": 0.0, "2T": 0.0, "3T": 0.0, "4T": 0.0, "anual": 0.0}
@@ -283,25 +361,22 @@ def limpar_dados_demonstracao(req: LimparDadosRequest):
                     elif eh_todos_anos or ano == ultimo_documento_ativo.get("ano_ativo"):
                         c["saldos_anuais"][ano] = c.get("saldos_trimestrais", {}).get("anual", 0.0)
 
-    # Classificação de grupos do balanço
     def _classificar_grupo(c):
         cod = str(c.get("codigo", "")).strip()
         g = c.get("grupo", "").lower()
         desc = c.get("conta", "").lower()
-        if cod.startswith("1.01") or cod.startswith("1.1"): return "ativo_circulante"
-        if cod.startswith("1.02") or cod.startswith("1.2"): return "ativo_nao_circulante"
-        if cod.startswith("2.01") or cod.startswith("2.1"): return "passivo_circulante"
-        if cod.startswith("2.02") or cod.startswith("2.2"): return "passivo_nao_circulante"
-        if cod.startswith("3."): return "patrimonio_liquido"
+        if cod.startswith(("2.03", "2.3", "2.04", "2.4", "3")): return "patrimonio_liquido"
+        if any(w in desc for w in ['patrimônio líquido', 'patrimonio liquido', 'capital social', 'reserva', 'lucro acumulado', 'lucros acumulados']): return "patrimonio_liquido"
+        if cod.startswith(("1.01", "1.1")): return "ativo_circulante"
+        if cod.startswith(("1.02", "1.2", "1.03", "1.3")): return "ativo_nao_circulante"
+        if cod.startswith(("2.01", "2.1")): return "passivo_circulante"
+        if cod.startswith(("2.02", "2.2")): return "passivo_nao_circulante"
+        if cod.startswith("2"): return "passivo_circulante"
         if "ativo circulante" in g: return "ativo_circulante"
         if "ativo não circulante" in g or "ativo nao circulante" in g: return "ativo_nao_circulante"
         if "passivo circulante" in g: return "passivo_circulante"
         if "passivo não circulante" in g or "passivo nao circulante" in g: return "passivo_nao_circulante"
         if "patrimônio líquido" in g or "patrimonio liquido" in g: return "patrimonio_liquido"
-        if any(w in desc for w in ['capital', 'reserva', 'lucro acumulado', 'patrimônio']): return "patrimonio_liquido"
-        if any(w in desc for w in ['longo prazo', 'não circulante']): return "passivo_nao_circulante" if any(w in desc for w in ['financiamento', 'empréstimo']) else "ativo_nao_circulante"
-        if any(w in desc for w in ['imobilizado', 'investimento', 'intangível']): return "ativo_nao_circulante"
-        if any(w in desc for w in ['fornecedor', 'salário', 'tributo']): return "passivo_circulante"
         return "ativo_circulante"
 
     from app.services.calculos_indices import CalculadoraIndicesFinanceiros
@@ -317,7 +392,6 @@ def limpar_dados_demonstracao(req: LimparDadosRequest):
 
     contas_balanco = ultimo_documento_ativo.get("contas_detalhadas", [])
 
-    # Recalcula para cada ano afetado
     for ano_k in anos_afetados:
         contas_ano = []
         for c in contas:
@@ -339,7 +413,6 @@ def limpar_dados_demonstracao(req: LimparDadosRequest):
             "lucro_liquido": lucro_liq
         }
 
-        # Totais Balanço ano_k
         ac_k = sum(c.get("saldos_anuais", {}).get(ano_k, 0.0) for c in contas_balanco if _classificar_grupo(c) == "ativo_circulante")
         anc_k = sum(c.get("saldos_anuais", {}).get(ano_k, 0.0) for c in contas_balanco if _classificar_grupo(c) == "ativo_nao_circulante")
         disp_k = sum(c.get("saldos_anuais", {}).get(ano_k, 0.0) for c in contas_balanco if "disponib" in c.get("grupo", "").lower() or any(w in c.get("conta", "").lower() for w in ['caixa', 'banco', 'aplica']))
@@ -360,7 +433,6 @@ def limpar_dados_demonstracao(req: LimparDadosRequest):
         }
         ultimo_documento_ativo["totais_balanco_por_ano"][ano_k] = totais_b_novo
 
-        # Indicadores ano_k
         indices_novos = CalculadoraIndicesFinanceiros.calcular_todos_indices(
             ativo_circulante=ac_k,
             ativo_nao_circulante=anc_k,
@@ -386,18 +458,6 @@ def limpar_dados_demonstracao(req: LimparDadosRequest):
     if ano_principal in ultimo_documento_ativo["indicadores_por_ano"]:
         ultimo_documento_ativo["indices_financeiros"] = ultimo_documento_ativo["indicadores_por_ano"][ano_principal]
 
-    # Se zerou todos os anos, zera explicitamente os totais de exibição
-    if eh_todos_anos and trim == "TODOS":
-        ultimo_documento_ativo["totais_dre"] = {"receita_bruta": 0.0, "lucro_liquido": 0.0}
-        ultimo_documento_ativo["totais_balanco"] = {
-            "ativo_circulante": 0.0, "ativo_nao_circulante": 0.0, "ativo_total": 0.0,
-            "passivo_circulante": 0.0, "passivo_nao_circulante": 0.0, "patrimonio_liquido": 0.0,
-            "passivo_total": 0.0, "disponibilidades": 0.0
-        }
-        ultimo_documento_ativo["indices_financeiros"] = CalculadoraIndicesFinanceiros.calcular_todos_indices(
-            0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
-        )
-
     if eh_todos_anos:
         msg = "Todos os dados e trimestres de TODOS OS EXERCÍCIOS foram zerados com sucesso!" if trim == "TODOS" else f"Os dados do {trim} foram limpos e recalculados em todos os exercícios!"
     else:
@@ -419,19 +479,18 @@ async def upload_demonstracao(
     Recebe um arquivo (Excel, CSV ou PDF) enviado pelo usuário,
     valida obrigatoriedade de ano contábil e seleção de trimestres,
     executa a extração estruturada, classificação com JEV, conglutinação na matriz e cálculo dos índices.
-    Armazena como documento ativo permanente na sessão.
+    Mescla (Merge) os dados do ano importado com os demais exercícios já existentes na sessão,
+    impedindo que outros anos desapareçam ou sejam perdidos!
     """
     global ultimo_documento_ativo
     from fastapi.responses import JSONResponse
     import json
 
     try:
-        # 1. Validação com Fallback Resiliente de Ano Contábil
         ano_limpo = (ano_destino or "").strip()
         if not ano_limpo:
             ano_limpo = "2026"
 
-        # 2. Validação com Fallback Resiliente de Trimestres Autorizados
         trimestres_lista = []
         if trimestres_autorizados:
             try:
@@ -442,7 +501,6 @@ async def upload_demonstracao(
         if not trimestres_lista:
             trimestres_lista = ["1T", "2T", "3T", "4T"]
 
-        # 3. Validação de Extensão Permitida
         nome_lower = (file.filename or "").lower()
         extensoes_permitidas = (".xlsx", ".xls", ".csv", ".pdf")
         if not any(nome_lower.endswith(ext) for ext in extensoes_permitidas):
@@ -455,7 +513,6 @@ async def upload_demonstracao(
                 }
             )
 
-        # 4. Proteção contra DoS: Limite de Tamanho (25 MB)
         MAX_FILE_SIZE = 25 * 1024 * 1024
         conteudo = await file.read()
         if len(conteudo) > MAX_FILE_SIZE:
@@ -478,6 +535,22 @@ async def upload_demonstracao(
                 trimestres_permitidos=trimestres_lista
             )
 
+        # FUSÃO MULTI-EXERCÍCIO (Preserva dados de outros anos já importados na sessão!)
+        if ultimo_documento_ativo is not None:
+            anos_unificados = set(ultimo_documento_ativo.get("anos_disponiveis", []))
+            anos_unificados.update(resultado.get("anos_disponiveis", []))
+            anos_unificados.update(["2026", "2025", "2024", "2023", ano_limpo])
+            resultado["anos_disponiveis"] = sorted(list(anos_unificados), reverse=True)
+
+            # Preserva os dicionários por ano dos outros exercícios que não são o ano_limpo importado agora
+            for dict_key in ["dre_matriz_por_ano", "totais_balanco_por_ano", "totais_dre_por_ano", "indicadores_por_ano"]:
+                antigo_map = ultimo_documento_ativo.get(dict_key, {})
+                novo_map = resultado.get(dict_key, {})
+                for ano_ant, val_ant in antigo_map.items():
+                    if ano_ant != ano_limpo:
+                        novo_map[ano_ant] = val_ant
+                resultado[dict_key] = novo_map
+
         ultimo_documento_ativo = resultado
         return resultado
     except Exception as e:
@@ -489,6 +562,135 @@ async def upload_demonstracao(
                 "detalhe": str(e)
             }
         )
+
+# --------------------------------------------------------------------------------------
+# ROTAS DE CADASTRO DE EMPRESAS (MATRIZ & FILIAIS) E PLANO DE CONTAS MULTI-EMPRESAS
+# --------------------------------------------------------------------------------------
+class EmpresaCreateRequest(BaseModel):
+    razao_social: str
+    nome_fantasia: Optional[str] = ""
+    cnpj: Optional[str] = ""
+    tipo: Optional[str] = "MATRIZ"
+    tipo_unidade: Optional[str] = "MATRIZ"  # "MATRIZ" ou "FILIAL"
+    matriz_id: Optional[str] = None
+    codigo_empresa: Optional[str] = ""
+    cidade: Optional[str] = ""
+    uf: Optional[str] = "SP"
+    cidade_uf: Optional[str] = ""
+    regime_tributario: Optional[str] = "Lucro Real"
+
+class ContaPlanoCreateRequest(BaseModel):
+    codigo_contabil: str
+    nome_conta: str
+    demonstracao: Optional[str] = "DRE"
+    tipo_demonstracao: Optional[str] = "DRE"  # "DRE" ou "BALANCO"
+    natureza: Optional[str] = "CREDORA"
+    tipo_conta: Optional[str] = "ANALITICA"
+    grupo_contabil: Optional[str] = "RECEITA"
+    conta_destino_matriz_id: str = "vendas_mercadorias"
+    conta_destino_matriz_nome: Optional[str] = ""
+    escopo: Optional[str] = "MATRIZ"
+    empresa_id: Optional[str] = "MATRIZ_GLOBAL"
+    propagar_filiais: bool = True
+
+@app.get("/api/empresas-plano")
+def listar_empresas_e_plano_contas(empresa_id: Optional[str] = None):
+    """
+    Retorna todas as empresas cadastradas (Matriz e Filiais) e o Plano de Contas unificado.
+    """
+    contas_efetivas = empresas_plano_service.obter_plano_contas_efetivo_empresa(empresa_id)
+    return {
+        "empresas": empresas_plano_service.listar_empresas(),
+        "plano_contas": contas_efetivas,
+        "plano_efetivo_empresa": {
+            "empresa_id": empresa_id or "CONSOLIDADO",
+            "contas_efetivas": contas_efetivas
+        }
+    }
+
+@app.post("/api/empresas")
+def cadastrar_empresa_endpoint(req: EmpresaCreateRequest):
+    """
+    Cadastra uma nova Empresa (Matriz ou Filial).
+    Se for Filial, herda imediatamente todas as contas do Plano de Contas da Matriz!
+    """
+    tipo_escolhido = req.tipo if req.tipo and req.tipo != "MATRIZ" else (req.tipo_unidade or "MATRIZ")
+    emp = empresas_plano_service.cadastrar_empresa(
+        razao_social=req.razao_social,
+        nome_fantasia=req.nome_fantasia or req.razao_social,
+        cnpj=req.cnpj or "",
+        tipo_unidade=tipo_escolhido,
+        matriz_id=req.matriz_id,
+        codigo_empresa=req.codigo_empresa or "",
+        cidade_uf=req.cidade_uf or "",
+        regime_tributario=req.regime_tributario or "Lucro Real",
+        cidade=req.cidade or "",
+        uf=req.uf or "SP"
+    )
+    return {
+        "status": "sucesso",
+        "mensagem": f"{emp['tipo_unidade']} '{emp['nome_fantasia']}' cadastrada com sucesso! ({emp['total_contas_ativas']} contas vinculadas)",
+        "empresa": emp,
+        "empresas": empresas_plano_service.listar_empresas()
+    }
+
+@app.delete("/api/empresas/{empresa_id}")
+def excluir_empresa_endpoint(empresa_id: str):
+    removido = empresas_plano_service.remover_empresa(empresa_id)
+    return {
+        "status": "sucesso" if removido else "erro",
+        "removido": removido,
+        "empresas": empresas_plano_service.listar_empresas()
+    }
+
+@app.post("/api/plano-contas")
+def cadastrar_conta_plano_endpoint(req: ContaPlanoCreateRequest):
+    """
+    Cadastra uma conta no Plano de Contas Corporativo.
+    Quando cadastrada na Matriz (ou Global), surte efeito imediato em todas as Filiais
+    e recalcula automaticamente a Matriz DRE da sessão ativa!
+    """
+    global ultimo_documento_ativo
+    dem_escolhida = req.demonstracao or req.tipo_demonstracao or "DRE"
+    escopo_escolhido = req.escopo or req.empresa_id or "MATRIZ"
+    nova_conta = empresas_plano_service.cadastrar_conta_plano(
+        codigo_contabil=req.codigo_contabil,
+        nome_conta=req.nome_conta,
+        tipo_demonstracao=dem_escolhida,
+        grupo_contabil=req.grupo_contabil or "RECEITA",
+        conta_destino_matriz_id=req.conta_destino_matriz_id,
+        conta_destino_matriz_nome=req.conta_destino_matriz_nome or req.conta_destino_matriz_id,
+        empresa_id=req.empresa_id or "MATRIZ_GLOBAL",
+        propagar_filiais=req.propagar_filiais,
+        escopo=escopo_escolhido,
+        demonstracao=dem_escolhida
+    )
+
+    # Se houver documento ativo carregado, re-conglutina imediatamente para surtir efeito na hora!
+    if ultimo_documento_ativo is not None:
+        contas_todas = ultimo_documento_ativo.get("itens_dre", []) + ultimo_documento_ativo.get("contas_detalhadas", [])
+        if contas_todas:
+            ano_at = ultimo_documento_ativo.get("ano_ativo", "2026")
+            matriz_nova = conglutinador_jev.conglutinar_dados_na_matriz(contas_todas)
+            ultimo_documento_ativo["dre_matriz_empresa"] = matriz_nova
+            if "dre_matriz_por_ano" in ultimo_documento_ativo:
+                ultimo_documento_ativo["dre_matriz_por_ano"][ano_at] = matriz_nova
+
+    return {
+        "status": "sucesso",
+        "mensagem": f"Conta '{nova_conta['codigo_contabil']} - {nova_conta['nome_conta']}' cadastrada na Matriz e propagada automaticamente para todas as Filiais!",
+        "conta": nova_conta,
+        "plano_contas": empresas_plano_service.obter_plano_contas_efetivo_empresa()
+    }
+
+@app.delete("/api/plano-contas/{conta_id}")
+def excluir_conta_plano_endpoint(conta_id: str):
+    removido = empresas_plano_service.remover_conta_plano(conta_id)
+    return {
+        "status": "sucesso" if removido else "erro",
+        "removido": removido,
+        "plano_contas": empresas_plano_service.obter_plano_contas_efetivo_empresa()
+    }
 
 @app.post("/api/classificar-conta")
 def classificar_conta(conta: str, descricao: str, saldo: float = None):
