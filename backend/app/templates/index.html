@@ -562,85 +562,63 @@
 
       if (exigeAuth && !autenticado) {
         return (
-          <div className="min-h-screen relative overflow-hidden bg-gradient-to-b from-sky-400 via-sky-300 to-sky-100 flex items-center justify-center p-4 selection:bg-amber-500 selection:text-white">
+          <div className="min-h-screen bg-slate-950 flex items-center justify-center p-3 sm:p-6 selection:bg-amber-500 selection:text-white">
             
-            {/* Céu Azul Radiante com Nuvens Volumosas Flutuantes */}
-            <div className="absolute inset-0 pointer-events-none overflow-hidden">
-              {/* Sol suave */}
-              <div className="absolute -top-20 -left-20 w-96 h-96 bg-yellow-200/40 rounded-full blur-3xl"></div>
-              <div className="absolute top-10 right-20 w-72 h-72 bg-white/30 rounded-full blur-2xl"></div>
-
-              {/* Nuvens decorativas de fundo em SVG */}
-              <svg className="absolute top-8 left-10 w-64 h-32 text-white/70 opacity-90 drop-shadow-md" fill="currentColor" viewBox="0 0 100 50">
-                <path d="M 20,40 Q 10,40 10,30 Q 10,20 25,20 Q 30,10 45,15 Q 60,8 70,20 Q 85,20 85,32 Q 85,40 75,40 Z"/>
-              </svg>
-
-              <svg className="absolute top-20 right-16 w-80 h-36 text-white/80 opacity-95 drop-shadow-lg" fill="currentColor" viewBox="0 0 100 50">
-                <path d="M 15,40 Q 5,40 5,28 Q 5,16 22,18 Q 30,6 48,12 Q 65,5 78,18 Q 95,18 95,30 Q 95,40 80,40 Z"/>
-              </svg>
-
-              <svg className="absolute -bottom-10 left-1/4 w-[500px] h-48 text-white/90 drop-shadow-2xl" fill="currentColor" viewBox="0 0 100 50">
-                <path d="M 10,45 Q 0,45 0,30 Q 0,15 20,18 Q 35,5 55,10 Q 75,3 88,18 Q 100,18 100,32 Q 100,45 85,45 Z"/>
-              </svg>
-            </div>
-
-            {/* Composição Central: A Cara do Leão com a Bocona Aberta */}
-            <div className="relative z-10 w-full max-w-xl flex flex-col items-center">
+            {/* Palco Central: Fotografia Ultra-Realista 8K do Leão com a Boca Bem Aberta e Céu Real */}
+            <div className="relative w-full max-w-4xl lg:max-w-5xl aspect-[16/11] sm:aspect-[16/9] rounded-3xl overflow-hidden shadow-[0_30px_90px_rgba(0,0,0,0.95)] border-2 border-amber-500/40 ring-1 ring-amber-400/20">
               
-              {/* Moldura Épica da Cabeça do Leão */}
-              <div className="relative w-full flex flex-col items-center">
-                
-                {/* Imagem do Leão Rugindo de Frente com a Boca Aberta e Céu Azul */}
-                <div className="relative w-72 sm:w-84 md:w-96 rounded-3xl overflow-hidden shadow-2xl border-4 border-amber-400/80 ring-8 ring-amber-500/20 transform hover:scale-[1.01] transition-transform duration-300">
-                  <img
-                    src="/static/leao_login.jpg"
-                    alt="Leão Guardião dos Acionistas com a Boca Aberta"
-                    className="w-full h-auto object-cover block"
-                  />
-                  {/* Gradiente sutil na boca para integrar com o card */}
-                  <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/40 to-transparent"></div>
-                  
-                  {/* Título integrado acima da juba */}
-                  <div className="absolute top-3 inset-x-0 text-center">
-                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-950/80 backdrop-blur-md border border-amber-400/50 text-amber-300 font-extrabold text-[11px] tracking-widest uppercase shadow-lg">
-                      🦁 Guardião das Demonstrações
-                    </span>
-                  </div>
-                </div>
+              {/* Fotografia Realista do Leão Rugindo e Céu Natural de Savana */}
+              <img
+                src="/static/leao_login.jpg"
+                alt="Fotografia Ultra-Realista do Leão Guardião com Boca Aberta e Céu Natural"
+                className="w-full h-full object-cover object-center select-none"
+              />
 
-                {/* A Telinha de Acesso dentro da Bocona do Leão */}
-                <div className="-mt-24 sm:-mt-28 relative z-20 w-[92%] sm:w-[88%] bg-slate-950/95 backdrop-blur-xl border-2 border-amber-500/80 rounded-3xl p-6 sm:p-7 shadow-[0_20px_50px_rgba(0,0,0,0.6)] text-center ring-4 ring-amber-500/20">
+              {/* Vinheta suave nas bordas para realçar a imersão cinematográfica */}
+              <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-black/40 pointer-events-none"></div>
+
+              {/* Brasão Superior Discreto sobre o Céu */}
+              <div className="absolute top-3 sm:top-5 inset-x-0 flex justify-center pointer-events-none">
+                <span className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-slate-950/80 backdrop-blur-md border border-amber-400/50 text-amber-300 font-black text-[10px] sm:text-xs tracking-widest uppercase shadow-2xl">
+                  <span>🦁</span>
+                  <span>Guardião das Demonstrações Financeiras</span>
+                </span>
+              </div>
+
+              {/* Telinha de Acesso Exatamente Dentro da Boca do Leão (Entre os Dentes de Cima e de Baixo) */}
+              <div className="absolute top-[62%] sm:top-[61%] left-1/2 -translate-x-1/2 -translate-y-1/2 w-[88%] max-w-[310px] sm:max-w-[350px] z-20">
+                <div className="bg-slate-950/90 backdrop-blur-md border-2 border-amber-500/80 rounded-2xl p-4 sm:p-5 shadow-[0_20px_50px_rgba(0,0,0,0.9)] text-center ring-2 ring-amber-400/30">
                   
-                  {/* Dentes e Brasão Superior da Mandíbula */}
-                  <div className="flex items-center justify-center gap-2 mb-2">
-                    <span className="text-xl">⚡</span>
-                    <h2 className="text-base sm:text-lg font-black text-amber-400 tracking-wider uppercase font-serif drop-shadow">
+                  {/* Cabeçalho do Card */}
+                  <div className="flex items-center justify-center gap-1.5 mb-1">
+                    <span className="text-base sm:text-lg">👑</span>
+                    <h2 className="text-sm sm:text-base font-black text-amber-400 tracking-wider uppercase font-serif drop-shadow">
                       Portal dos Acionistas
                     </h2>
-                    <span className="text-xl">👑</span>
+                    <span className="text-base sm:text-lg">⚡</span>
                   </div>
                   
-                  <p className="text-[11px] text-slate-300 font-medium">
-                    Insira o PIN da Diretoria na mandíbula do Leão para liberar o cofre contábil:
+                  <p className="text-[10px] sm:text-[11px] text-slate-300 font-medium">
+                    Digite o PIN para liberar o acesso ao painel:
                   </p>
 
-                  <form onSubmit={realizarLogin} className="mt-5 space-y-4">
+                  <form onSubmit={realizarLogin} className="mt-3.5 space-y-3">
                     <div className="relative">
-                      <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-amber-400">
-                        <span className="text-base">🔑</span>
+                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-amber-400 text-sm">
+                        🔑
                       </div>
                       <input
                         type="password"
                         value={tokenInput}
                         onChange={(e) => setTokenInput(e.target.value)}
-                        placeholder="PIN OU CHAVE DO CONSELHO..."
-                        className="w-full pl-10 pr-4 py-3 bg-slate-900 border-2 border-amber-500/60 rounded-2xl text-amber-200 placeholder-slate-500 text-sm focus:outline-none focus:ring-4 focus:ring-amber-500/30 focus:border-amber-400 text-center tracking-widest font-mono font-bold shadow-inner"
+                        placeholder="PIN DO CONSELHO..."
+                        className="w-full pl-9 pr-3 py-2.5 bg-slate-900/90 border border-amber-500/70 rounded-xl text-amber-200 placeholder-slate-500 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-amber-500/50 focus:border-amber-400 text-center tracking-widest font-mono font-bold shadow-inner"
                         autoFocus
                       />
                     </div>
 
                     {erroAuth && (
-                      <div className="p-3 bg-rose-950/80 border border-rose-500/50 text-rose-300 text-xs rounded-xl text-center font-medium shadow-md animate-shake">
+                      <div className="p-2 bg-rose-950/90 border border-rose-500/60 text-rose-300 text-[11px] rounded-lg text-center font-medium shadow-md">
                         ⚠️ {erroAuth}
                       </div>
                     )}
@@ -648,23 +626,22 @@
                     <button
                       type="submit"
                       disabled={validandoAuth || !tokenInput.trim()}
-                      className="w-full py-3.5 bg-gradient-to-r from-amber-500 via-amber-400 to-yellow-500 hover:from-amber-400 hover:to-yellow-400 text-slate-950 font-black text-xs sm:text-sm uppercase tracking-widest rounded-2xl shadow-xl shadow-amber-500/20 transform hover:-translate-y-0.5 active:translate-y-0 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                      className="w-full py-2.5 bg-gradient-to-r from-amber-500 via-amber-400 to-yellow-500 hover:from-amber-400 hover:to-yellow-400 text-slate-950 font-black text-xs uppercase tracking-wider rounded-xl shadow-lg shadow-amber-500/30 transform hover:-translate-y-0.5 active:translate-y-0 transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5 cursor-pointer"
                     >
-                      <span>{validandoAuth ? 'Autenticando...' : 'Liberar Acesso ao Painel'}</span>
-                      <span className="text-base">➔</span>
+                      <span>{validandoAuth ? 'Autenticando...' : 'Liberar Acesso'}</span>
+                      <span className="text-sm">➔</span>
                     </button>
                   </form>
 
-                  <div className="mt-4 pt-3 border-t border-slate-800 flex items-center justify-between text-[10px] text-slate-400 font-medium">
+                  <div className="mt-3 pt-2.5 border-t border-slate-800/90 flex items-center justify-between text-[9px] sm:text-[10px] text-slate-400 font-medium">
                     <span className="flex items-center gap-1 text-emerald-400">
                       <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
                       Zero Trust Ativo
                     </span>
-                    <span className="text-amber-400/90 font-mono">TypeSafe JEV Engine</span>
+                    <span className="text-amber-400/90 font-mono">TypeSafe JEV</span>
                   </div>
 
                 </div>
-
               </div>
 
             </div>
