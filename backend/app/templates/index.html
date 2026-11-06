@@ -711,39 +711,42 @@
         }
       };
 
-      // Redimensionamento e Ajuste do Canvas de Anotação/Rabisco
+      // Redimensionamento e Ajuste do Canvas de Anotação/Rabisco em TODA a Tela
       useEffect(() => {
         if (!modoRabiscoAtivo) return;
-        const atualizarTamanhoCanvas = () => {
-          const cv = canvasRef.current;
-          if (cv) {
-            const w = document.documentElement.scrollWidth || window.innerWidth;
-            const h = document.documentElement.scrollHeight || window.innerHeight;
-            if (cv.width !== w || cv.height !== h) {
-              const ctx = cv.getContext('2d');
-              const imgData = ctx.getImageData(0, 0, cv.width, cv.height);
-              cv.width = w;
-              cv.height = h;
+        const cv = canvasRef.current;
+        if (!cv) return;
+
+        const ajustarCanvas = () => {
+          const w = window.innerWidth;
+          const h = window.innerHeight;
+          if (cv.width !== w || cv.height !== h) {
+            const ctx = cv.getContext('2d');
+            const imgData = cv.width > 0 && cv.height > 0 ? ctx.getImageData(0, 0, cv.width, cv.height) : null;
+            cv.width = w;
+            cv.height = h;
+            if (imgData) {
               try { ctx.putImageData(imgData, 0, 0); } catch(e){}
             }
           }
         };
-        atualizarTamanhoCanvas();
-        window.addEventListener('resize', atualizarTamanhoCanvas);
-        window.addEventListener('scroll', atualizarTamanhoCanvas);
-        return () => {
-          window.removeEventListener('resize', atualizarTamanhoCanvas);
-          window.removeEventListener('scroll', atualizarTamanhoCanvas);
-        };
+
+        ajustarCanvas();
+        window.addEventListener('resize', ajustarCanvas);
+        return () => window.removeEventListener('resize', ajustarCanvas);
       }, [modoRabiscoAtivo]);
+
+      const extrairCoordenadas = (e) => {
+        const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+        const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+        return { x: clientX, y: clientY };
+      };
 
       const iniciarDesenho = (e) => {
         if (!modoRabiscoAtivo) return;
         const cv = canvasRef.current;
         if (!cv) return;
-        const rect = cv.getBoundingClientRect();
-        const x = (e.clientX - rect.left) + window.scrollX;
-        const y = (e.clientY - rect.top) + window.scrollY;
+        const { x, y } = extrairCoordenadas(e);
 
         const ctx = cv.getContext('2d');
         setDesenhando(true);
@@ -765,9 +768,7 @@
         if (!modoRabiscoAtivo || !desenhando) return;
         const cv = canvasRef.current;
         if (!cv) return;
-        const rect = cv.getBoundingClientRect();
-        const x = (e.clientX - rect.left) + window.scrollX;
-        const y = (e.clientY - rect.top) + window.scrollY;
+        const { x, y } = extrairCoordenadas(e);
         const ctx = cv.getContext('2d');
 
         if (ferramentaRabisco === 'pen' || ferramentaRabisco === 'marker') {
@@ -780,10 +781,10 @@
         if (!modoRabiscoAtivo || !desenhando) return;
         const cv = canvasRef.current;
         if (!cv) return;
-        const rect = cv.getBoundingClientRect();
-        const x = (e.clientX - rect.left) + window.scrollX;
-        const y = (e.clientY - rect.top) + window.scrollY;
         const ctx = cv.getContext('2d');
+        const posFinal = e.changedTouches ? { x: e.changedTouches[0].clientX, y: e.changedTouches[0].clientY } : extrairCoordenadas(e);
+        const x = posFinal.x;
+        const y = posFinal.y;
 
         if (ferramentaRabisco === 'arrow' && pontoInicial) {
           desenharSeta(ctx, pontoInicial.x, pontoInicial.y, x, y, corRabisco, espessuraRabisco);
@@ -3465,21 +3466,24 @@
             modaisAbertos={processandoModal || modalPreImportacao || modalMapeamento}
           />
 
-          {/* Camada Transparente de Rabisco / Anotação Sobreposta na Tela */}
+          {/* Camada Transparente de Rabisco / Anotação Sobreposta em TODA a Tela */}
           {modoRabiscoAtivo && (
             <canvas
               ref={canvasRef}
               onMouseDown={iniciarDesenho}
               onMouseMove={desenharMovimento}
               onMouseUp={finalizarDesenho}
-              className="absolute inset-0 z-40 cursor-crosshair"
-              style={{ pointerEvents: 'auto' }}
+              onTouchStart={iniciarDesenho}
+              onTouchMove={desenharMovimento}
+              onTouchEnd={finalizarDesenho}
+              className="fixed inset-0 w-screen h-screen z-[9998] cursor-crosshair"
+              style={{ pointerEvents: 'auto', touchAction: 'none' }}
             />
           )}
 
           {/* Caixinha Flutuante de Ferramentas de Desenho (Lápis, Seta, Marcador, Retângulo, Cores, Limpar) */}
           {modoRabiscoAtivo && (
-            <div className="fixed top-20 right-8 z-50 bg-slate-900/95 backdrop-blur-md border-2 border-amber-400 text-white p-3 rounded-2xl shadow-2xl space-y-3 animate-in fade-in zoom-in-95 duration-150 select-none">
+            <div className="fixed top-20 right-8 z-[9999] bg-slate-900/95 backdrop-blur-md border-2 border-amber-400 text-white p-3 rounded-2xl shadow-2xl space-y-3 animate-in fade-in zoom-in-95 duration-150 select-none">
               <div className="flex items-center justify-between gap-3 border-b border-slate-700 pb-2">
                 <span className="text-xs font-black text-amber-400 flex items-center gap-1.5">
                   <span>🎨</span>
