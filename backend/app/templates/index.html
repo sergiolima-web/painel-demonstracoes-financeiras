@@ -1552,9 +1552,9 @@
                         </span>
                       </div>
 
-                      {/* Card 3: Cadastro de Matriz, Filiais & Plano de Contas */}
+                      {/* Card 3: Cadastro de Empresas (Matriz & Filiais) */}
                       <div
-                        onClick={() => { setActiveTab('matriz_filiais'); setExibirHubEnxuto(false); }}
+                        onClick={() => { setActiveTab('empresas'); setExibirHubEnxuto(false); }}
                         className="bg-gradient-to-br from-indigo-50 to-purple-50/40 border border-indigo-300 hover:border-indigo-400 p-5 rounded-2xl shadow-sm hover:shadow-md transition-all cursor-pointer group space-y-3"
                       >
                         <div className="h-10 w-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center text-xl font-bold shadow-md shadow-indigo-600/25 group-hover:scale-105 transition-transform">
@@ -1562,46 +1562,44 @@
                         </div>
                         <div>
                           <h3 className="text-sm font-extrabold text-slate-900 group-hover:text-indigo-900">
-                            Matriz, Filiais & Plano de Contas
+                            Cadastro de Empresas
                           </h3>
                           <p className="text-[11px] text-slate-600 mt-1 leading-relaxed">
-                            Cadastrar empresas, importar plano de contas enxuto e gerenciar herança contábil.
+                            Cadastrar e gerenciar a Matriz e Filiais da estrutura corporativa.
                           </p>
                         </div>
                         <span className="text-xs font-bold text-indigo-800 flex items-center gap-1">
-                          Gerenciar Contas ({planoContasLista.length}) ➔
+                          Gerenciar Empresas ({empresasLista.length}) ➔
                         </span>
                       </div>
 
-                      {/* Card 4: Importar Demonstrações Financeiras */}
+                      {/* Card 4: Plano de Contas */}
                       <div
-                        onClick={() => {
-                          setExibirHubEnxuto(false);
-                          if (fileInputRef.current) fileInputRef.current.click();
-                        }}
+                        onClick={() => { setActiveTab('plano_contas'); setExibirHubEnxuto(false); }}
                         className="bg-gradient-to-br from-emerald-50 to-teal-50/40 border border-emerald-300 hover:border-emerald-400 p-5 rounded-2xl shadow-sm hover:shadow-md transition-all cursor-pointer group space-y-3"
                       >
                         <div className="h-10 w-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center text-xl font-bold shadow-md shadow-emerald-600/25 group-hover:scale-105 transition-transform">
-                          📥
+                          📑
                         </div>
                         <div>
                           <h3 className="text-sm font-extrabold text-slate-900 group-hover:text-emerald-900">
-                            Importar Nova Demonstração
+                            Plano de Contas
                           </h3>
                           <p className="text-[11px] text-slate-600 mt-1 leading-relaxed">
-                            Enviar planilha Excel (.xlsx, .xls, .csv) ou PDF de DRE/Balanço para processamento.
+                            Importar estrutura contábil enxuta e gerenciar amarração de contas.
                           </p>
                         </div>
                         <span className="text-xs font-bold text-emerald-800 flex items-center gap-1">
-                          Selecionar Arquivo ➔
+                          Gerenciar Contas ({planoContasLista.length}) ➔
                         </span>
                       </div>
                     </div>
                   </div>
                 )}
 
-                {/* Abas */}
+                {/* Abas de Navegação Principal */}
                 <div className="flex items-center space-x-2 border-b border-slate-200 pb-2 overflow-x-auto">
+                  {/* Aba 1: Matriz DRE */}
                   <button
                     onClick={() => setActiveTab('matriz')}
                     className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all shrink-0 flex items-center gap-1.5 ${
@@ -1613,21 +1611,23 @@
                     <span>🏢 Matriz DRE da Empresa</span>
                   </button>
 
+                  {/* Aba 2: Cadastro de Empresas (Separado e Exclusivo) */}
                   <button
-                    onClick={() => setActiveTab('matriz_filiais')}
+                    onClick={() => setActiveTab('empresas')}
                     className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all shrink-0 flex items-center gap-2 ${
-                      activeTab === 'matriz_filiais'
+                      activeTab === 'empresas' || activeTab === 'matriz_filiais'
                         ? 'bg-gradient-to-r from-indigo-600 via-blue-600 to-sky-600 text-white font-black shadow-md shadow-indigo-500/30 ring-2 ring-indigo-500'
                         : 'bg-indigo-50 hover:bg-indigo-100 text-indigo-900 border border-indigo-300'
                     }`}
                   >
                     <span>🏛️</span>
-                    <span>Matriz, Filiais & Plano de Contas</span>
+                    <span>Cadastro de Empresas</span>
                     <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-indigo-200 text-indigo-950 border border-indigo-400 font-bold">
-                      {empresasLista.length} emp / {planoContasLista.length} contas
+                      {empresasLista.length} emp
                     </span>
                   </button>
 
+                  {/* Aba 3: Regras De-Para */}
                   <button
                     onClick={() => setActiveTab('ensino_jev')}
                     className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all shrink-0 flex items-center gap-2 ${
@@ -1643,6 +1643,7 @@
                     </span>
                   </button>
 
+                  {/* Aba 4: Parecer de Gestão & Acionistas */}
                   <button
                     onClick={() => setActiveTab('acionistas')}
                     className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all shrink-0 ${
@@ -1652,6 +1653,22 @@
                     }`}
                   >
                     <span>Parecer de Gestão & Acionistas</span>
+                  </button>
+
+                  {/* Aba 5: Plano de Contas (Separado após Parecer, conforme solicitado) */}
+                  <button
+                    onClick={() => setActiveTab('plano_contas')}
+                    className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all shrink-0 flex items-center gap-2 ${
+                      activeTab === 'plano_contas'
+                        ? 'bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 text-white font-black shadow-md shadow-emerald-500/30 ring-2 ring-emerald-500'
+                        : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border border-emerald-300'
+                    }`}
+                  >
+                    <span>📑</span>
+                    <span>Plano de Contas</span>
+                    <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-emerald-200 text-emerald-950 border border-emerald-400 font-bold">
+                      {planoContasLista.length} contas
+                    </span>
                   </button>
 
                   <button
@@ -1688,36 +1705,25 @@
                   </button>
                 </div>
 
-                {/* Conteúdo da Nova Aba: Matriz, Filiais & Plano de Contas Multi-Empresas */}
-                {activeTab === 'matriz_filiais' && (
+                {/* Conteúdo da Aba 1: Cadastro de Empresas (Exclusivo para Matriz & Filiais) */}
+                {(activeTab === 'empresas' || activeTab === 'matriz_filiais') && (
                   <div className="space-y-4">
                     {/* Header Compacto e Clean (1,5 cm) */}
                     <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 border border-indigo-500/30 rounded-xl px-4 py-2.5 shadow-sm flex items-center justify-between gap-3 text-white">
                       <div className="flex items-center gap-2.5 min-w-0">
                         <span className="text-sm">🏛️</span>
                         <h2 className="text-xs font-black text-white truncate">
-                          Matriz, Filiais & Plano de Contas
+                          Cadastro de Empresas (Matriz & Filiais)
                         </h2>
                         <span className="hidden sm:inline-block text-[11px] text-indigo-300/80 truncate">
-                          • Herança contábil automática da Matriz para Filiais
+                          • Gestão da sede e unidades vinculadas da estrutura corporativa
                         </span>
                       </div>
 
                       <div className="flex items-center gap-2 shrink-0">
                         <span className="px-2.5 py-0.5 rounded-lg bg-indigo-900/60 border border-indigo-500/40 text-[11px] font-bold text-indigo-300">
-                          {empresasLista.length} emp
+                          {empresasLista.length} empresas cadastradas
                         </span>
-                        <span className="px-2.5 py-0.5 rounded-lg bg-emerald-900/60 border border-emerald-500/40 text-[11px] font-bold text-emerald-300">
-                          {planoContasLista.length} contas
-                        </span>
-                        <button
-                          onClick={handleExpurgarBancoDados}
-                          className="px-2.5 py-1 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-[11px] font-bold transition-all flex items-center gap-1 cursor-pointer"
-                          title="Varrer banco de dados e excluir todos os valores"
-                        >
-                          <span>🧹</span>
-                          <span className="hidden md:inline">Zerar Banco</span>
-                        </button>
                       </div>
                     </div>
 
@@ -1728,14 +1734,14 @@
                       </div>
                     )}
 
-                    {/* GRID: 1. Cadastro de Empresas (Matriz e Filiais) */}
+                    {/* GRID EXCLUSIVO DE CADASTRO DE EMPRESAS */}
                     <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
                       {/* Formulário Cadastrar Empresa */}
                       <div className="lg:col-span-5 bg-white border border-slate-200 rounded-2xl p-5 shadow-sm space-y-4">
                         <div className="border-b border-slate-200 pb-3 flex items-center justify-between">
                           <h3 className="text-sm font-extrabold text-slate-900 flex items-center gap-2">
                             <span>🏢</span>
-                            <span>1. Cadastrar Matriz ou Filial</span>
+                            <span>Cadastrar Matriz ou Filial</span>
                           </h3>
                           <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200">
                             Vínculo Societário
@@ -1862,7 +1868,7 @@
                                 <span>Estrutura Societária Ativa (Matriz & Filiais)</span>
                               </h3>
                               <p className="text-[11px] text-slate-500 mt-0.5">
-                                As filiais herdam automaticamente todas as contas contábeis cadastradas na Matriz.
+                                Unidades cadastradas e seus vínculos societários.
                               </p>
                             </div>
                             <span className="text-xs font-bold text-indigo-700 bg-indigo-50 px-2.5 py-1 rounded-lg border border-indigo-200">
@@ -1870,11 +1876,9 @@
                             </span>
                           </div>
 
-                          <div className="mt-4 space-y-3 max-h-[320px] overflow-y-auto pr-1">
+                          <div className="mt-4 space-y-3 max-h-[360px] overflow-y-auto pr-1">
                             {empresasLista.map((emp) => {
                               const ehMatriz = emp.tipo === 'MATRIZ';
-                              const totalContasMatriz = planoContasLista.filter(c => c.escopo === 'MATRIZ' || c.propagar_filiais).length;
-                              const totalContasProprias = planoContasLista.filter(c => c.escopo === emp.id).length;
                               return (
                                 <div
                                   key={emp.id}
@@ -1905,28 +1909,18 @@
                                       <span>•</span>
                                       <span>Local: {emp.cidade}/{emp.uf}</span>
                                       <span>•</span>
-                                      <span className="text-emerald-700 font-bold">
-                                        {ehMatriz
-                                          ? `📋 ${totalContasMatriz} contas mestras (propagadas p/ filiais)`
-                                          : `🔗 Herda ${totalContasMatriz} contas da Matriz + ${totalContasProprias} próprias`}
-                                      </span>
+                                      <span>Regime: {emp.regime_tributario || 'Lucro Real'}</span>
                                     </div>
                                   </div>
 
                                   <div className="flex items-center gap-2 shrink-0">
-                                    <button
-                                      onClick={() => setEmpresaSelecionadaFiltro(emp.id)}
-                                      className="px-2.5 py-1 rounded-lg bg-white hover:bg-indigo-50 text-indigo-700 border border-indigo-200 text-[11px] font-bold transition-colors cursor-pointer"
-                                    >
-                                      Ver Plano Efetivo
-                                    </button>
                                     {!ehMatriz && (
                                       <button
                                         onClick={() => handleRemoverEmpresa(emp.id)}
-                                        className="px-2 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-[11px] font-bold transition-colors cursor-pointer"
+                                        className="px-2.5 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-[11px] font-bold transition-colors cursor-pointer"
                                         title="Remover Filial"
                                       >
-                                        🗑️
+                                        🗑️ Excluir
                                       </button>
                                     )}
                                   </div>
@@ -1937,8 +1931,48 @@
                         </div>
                       </div>
                     </div>
+                  </div>
+                )}
 
-                    {/* SEÇÃO 1.5: Importador Inteligente de Estrutura Enxuta (Plano de Contas ou DRE) & Trava de Governança */}
+                {/* Conteúdo da Aba 2: Plano de Contas (Exclusivo e Separado) */}
+                {activeTab === 'plano_contas' && (
+                  <div className="space-y-4">
+                    {/* Header Compacto e Clean (1,5 cm) */}
+                    <div className="bg-gradient-to-r from-slate-900 via-emerald-950 to-slate-900 border border-emerald-500/30 rounded-xl px-4 py-2.5 shadow-sm flex items-center justify-between gap-3 text-white">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <span className="text-sm">📑</span>
+                        <h2 className="text-xs font-black text-white truncate">
+                          Plano de Contas Corporativo
+                        </h2>
+                        <span className="hidden sm:inline-block text-[11px] text-emerald-300/80 truncate">
+                          • Estrutura de Contas Enxuta, DRE e Balanço Patrimonial
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-2 shrink-0">
+                        <span className="px-2.5 py-0.5 rounded-lg bg-emerald-900/60 border border-emerald-500/40 text-[11px] font-bold text-emerald-300">
+                          {planoContasLista.length} contas cadastradas
+                        </span>
+                        <button
+                          type="button"
+                          onClick={handleLimparPlanoContas}
+                          className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-rose-900/70 text-rose-300 border border-rose-500/30 text-[11px] font-bold transition-all flex items-center gap-1 cursor-pointer"
+                          title="Zerar todas as contas do Plano de Contas"
+                        >
+                          <span>🗑️</span>
+                          <span className="hidden md:inline">Limpar Plano</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    {msgEmpresaPlano && (
+                      <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-300 text-emerald-900 text-xs font-bold flex items-center justify-between shadow-sm">
+                        <span>{msgEmpresaPlano}</span>
+                        <button onClick={() => setMsgEmpresaPlano('')} className="text-emerald-700 hover:text-emerald-950 font-black">✕</button>
+                      </div>
+                    )}
+
+                    {/* SEÇÃO 1: Importador Inteligente de Estrutura Enxuta (Plano de Contas ou DRE) */}
                     <div className="bg-gradient-to-br from-emerald-950 via-slate-900 to-indigo-950 border border-emerald-500/40 rounded-2xl p-6 shadow-xl text-white space-y-5">
                       <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 border-b border-slate-800 pb-4">
                         <div className="space-y-1.5 max-w-3xl">
@@ -1986,15 +2020,6 @@
                           >
                             <span>📥</span>
                             <span>{importandoEstrutura ? 'Limpando & Identificando Peça...' : 'Importar Planilha de Contas / DRE (Deixar Enxuta)'}</span>
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={handleLimparPlanoContas}
-                            className="px-3.5 py-3 rounded-2xl bg-slate-800 hover:bg-rose-900/70 text-rose-300 border border-rose-500/30 text-xs font-bold transition-all cursor-pointer"
-                            title="Zerar todas as contas do Plano de Contas (Bloqueia importação até novo cadastro)"
-                          >
-                            🗑️ Limpar Plano de Contas
                           </button>
                         </div>
                       </div>
@@ -2079,16 +2104,16 @@
                       )}
                     </div>
 
-                    {/* SEÇÃO 2: Plano de Contas Multi-Empresas (Herança Automática Matriz -> Filiais) */}
+                    {/* SEÇÃO 2: Plano de Contas Multi-Empresas (Formulário e Tabela de Contas) */}
                     <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-5">
                       <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 border-b border-slate-200 pb-4">
                         <div>
                           <h3 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
                             <span>📚</span>
-                            <span>2. Plano de Contas Multi-Empresas (Com Propagação Matriz ➔ Filiais)</span>
+                            <span>Cadastrar Nova Conta no Plano & Propagação Matriz ➔ Filiais</span>
                           </h3>
                           <p className="text-xs text-slate-500 mt-0.5">
-                            Ao cadastrar uma conta na <strong>Matriz</strong>, ela passa a valer automaticamente para todas as Filiais e alimenta a amarração contábil do JEV.
+                            Ao cadastrar uma conta na <strong>Matriz</strong>, ela passa a valer automaticamente para todas as Filiais.
                           </p>
                         </div>
 
@@ -2152,7 +2177,7 @@
                               required
                               placeholder="Ex: Receita de Vendas E-Commerce Matriz & Filiais"
                               value={novaContaNome}
-                              onChange={e => setNovaContaNome(e.target.value)}
+                              onChange={e => setNovaEmpNome ? setNovaContaNome(e.target.value) : setNovaContaNome(e.target.value)}
                               className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-indigo-500"
                             />
                           </div>
@@ -3104,9 +3129,9 @@
                             type="button"
                             onClick={() => {
                               setModalPreImportacao(false);
-                              setActiveTab('matriz_filiais');
+                              setActiveTab('plano_contas');
                             }}
-                            className="text-[11px] font-bold underline text-indigo-800 hover:text-indigo-950 cursor-pointer"
+                            className="text-[11px] font-bold underline text-emerald-800 hover:text-emerald-950 cursor-pointer"
                           >
                             Ver Aba Plano de Contas ➔
                           </button>
