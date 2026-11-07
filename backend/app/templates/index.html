@@ -460,6 +460,8 @@
       const [novaEmpCidade, setNovaEmpCidade] = React.useState('');
       const [novaEmpRegime, setNovaEmpRegime] = React.useState('Lucro Real');
       const [novaEmpMatrizId, setNovaEmpMatrizId] = React.useState('emp_matriz_01');
+      const [buscandoCnpj, setBuscandoCnpj] = React.useState(false);
+      const [msgCnpj, setMsgCnpj] = React.useState(null);
 
       // Formulário Nova Conta do Plano de Contas Multi-Empresas
       const [novaContaEscopo, setNovaContaEscopo] = React.useState('MATRIZ');
@@ -768,6 +770,74 @@
         carregarEmpresasPlano();
       }, []);
 
+      // =========================================================================
+      // FUNÇÕES DE CNPJ & RECUPERAÇÃO AUTOMÁTICA NA RECEITA FEDERAL:
+      // =========================================================================
+      const formatarMascaraCnpj = (valor) => {
+        if (!valor) return '';
+        const digits = valor.replace(/\D/g, '').slice(0, 14);
+        if (digits.length <= 2) return digits;
+        if (digits.length <= 5) return `${digits.slice(0, 2)}.${digits.slice(2)}`;
+        if (digits.length <= 8) return `${digits.slice(0, 2)}.${digits.slice(2, 5)}.${digits.slice(5)}`;
+        if (digits.length <= 12) return `${digits.slice(0, 2)}.${digits.slice(2, 5)}.${digits.slice(5, 8)}/${digits.slice(8)}`;
+        return `${digits.slice(0, 2)}.${digits.slice(2, 5)}.${digits.slice(5, 8)}/${digits.slice(8, 12)}-${digits.slice(12)}`;
+      };
+
+      const handleConsultarCnpjReceita = async (cnpjParam) => {
+        const cnpjParaConsultar = (cnpjParam || novaEmpCnpj || '').replace(/\D/g, '');
+        if (cnpjParaConsultar.length !== 14) {
+          setMsgCnpj({ tipo: 'erro', texto: 'Informe o CNPJ completo com 14 dígitos para buscar na Receita Federal.' });
+          return;
+        }
+
+        setBuscandoCnpj(true);
+        setMsgCnpj({ tipo: 'loading', texto: '🔍 Consultando base de dados oficial da Receita Federal...' });
+
+        try {
+          const res = await fetch(`/api/consultar-cnpj/${cnpjParaConsultar}`);
+          const data = await res.json();
+
+          if (res.ok && data.sucesso) {
+            if (data.razao_social) setNovaEmpRazao(data.razao_social);
+            if (data.nome_fantasia) setNovaEmpFantasia(data.nome_fantasia);
+            if (data.cidade) setNovaEmpCidade(data.cidade);
+            if (data.uf) setNovaEmpUf(data.uf);
+            if (data.cnpj) setNovaEmpCnpj(data.cnpj);
+            if (data.tipo_unidade && (data.tipo_unidade === 'MATRIZ' || data.tipo_unidade === 'FILIAL')) {
+              setNovaEmpTipo(data.tipo_unidade);
+            }
+            if (data.regime_tributario) {
+              setNovaEmpRegime(data.regime_tributario);
+            }
+            setMsgCnpj({
+              tipo: 'sucesso',
+              texto: `✅ Dados recuperados com sucesso da Receita Federal! (Situação: ${data.situacao_cadastral || 'ATIVA'} • ${data.fonte})`
+            });
+          } else {
+            setMsgCnpj({
+              tipo: 'erro',
+              texto: data.erro || 'CNPJ não localizado na base da Receita Federal.'
+            });
+          }
+        } catch (err) {
+          setMsgCnpj({
+            tipo: 'erro',
+            texto: 'Não foi possível consultar a Receita Federal agora. Preencha os campos manualmente.'
+          });
+        } finally {
+          setBuscandoCnpj(false);
+        }
+      };
+
+      const handleDigitarCnpj = (e) => {
+        const formatado = formatarMascaraCnpj(e.target.value);
+        setNovaEmpCnpj(formatado);
+        const digitos = formatado.replace(/\D/g, '');
+        if (digitos.length === 14) {
+          handleConsultarCnpjReceita(digitos);
+        }
+      };
+
       const handleCadastrarEmpresa = async (e) => {
         e.preventDefault();
         if (!novaEmpRazao.trim()) return;
@@ -797,6 +867,7 @@
             setNovaEmpFantasia('');
             setNovaEmpCnpj('');
             setNovaEmpCidade('');
+            setMsgCnpj(null);
             carregarEmpresasPlano();
             setTimeout(() => setMsgEmpresaPlano(''), 6000);
           } else {
@@ -2039,6 +2110,74 @@
                             )}
                           </div>
 
+                          {/* CAMPO CNPJ NO TOPO COM RECUPERAÇÃO AUTOMÁTICA DA RECEITA FEDERAL */}
+                          <div className="bg-indigo-50/50 p-2.5 rounded-xl border border-indigo-100 space-y-1.5">
+                            <div className="flex items-center justify-between">
+                              <label className="block text-[11px] font-black text-indigo-950 flex items-center gap-1.5">
+                                <span>📄 CNPJ da Empresa:</span>
+                                <span className="text-[10px] font-semibold text-indigo-600 bg-indigo-100/70 px-1.5 py-0.2 rounded">
+                                  Recuperação Direta da Receita Federal
+                                </span>
+                              </label>
+                            </div>
+                            <div className="flex gap-2">
+                              <input
+                                type="text"
+                                placeholder="00.000.000/0000-00"
+                                value={novaEmpCnpj}
+                                onChange={handleDigitarCnpj}
+                                onKeyDown={e => {
+                                  if (e.key === 'Enter') {
+                                    e.preventDefault();
+                                    handleConsultarCnpjReceita();
+                                  }
+                                }}
+                                className="flex-1 px-3 py-2 bg-white border border-indigo-200 rounded-xl text-xs text-slate-900 font-mono font-bold tracking-wider focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600 shadow-2xs"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => handleConsultarCnpjReceita()}
+                                disabled={buscandoCnpj}
+                                className={`px-3 py-2 rounded-xl text-xs font-extrabold flex items-center gap-1.5 transition-all cursor-pointer shadow-sm ${
+                                  buscandoCnpj
+                                    ? 'bg-slate-200 text-slate-500 cursor-not-allowed'
+                                    : 'bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white shadow-indigo-500/20'
+                                }`}
+                                title="Recuperar Razão Social, Fantasia, Cidade e UF na Receita Federal"
+                              >
+                                {buscandoCnpj ? (
+                                  <>
+                                    <svg className="animate-spin h-3.5 w-3.5 text-slate-600" fill="none" viewBox="0 0 24 24">
+                                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+                                    </svg>
+                                    <span>Buscando...</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <span>⚡</span>
+                                    <span>Buscar na Receita</span>
+                                  </>
+                                )}
+                              </button>
+                            </div>
+
+                            {/* Alerta de Status da Consulta CNPJ */}
+                            {msgCnpj && (
+                              <div
+                                className={`text-[11px] p-2 rounded-lg font-medium border flex items-center gap-1.5 transition-all ${
+                                  msgCnpj.tipo === 'sucesso'
+                                    ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                                    : msgCnpj.tipo === 'loading'
+                                    ? 'bg-blue-50 text-blue-800 border-blue-200'
+                                    : 'bg-rose-50 text-rose-800 border-rose-200'
+                                }`}
+                              >
+                                <span>{msgCnpj.texto}</span>
+                              </div>
+                            )}
+                          </div>
+
                           <div>
                             <label className="block text-[11px] font-bold text-slate-700 mb-1">Razão Social:</label>
                             <input
@@ -2047,31 +2186,19 @@
                               placeholder="Ex: Grupo Corporativo Brasil S.A. - Filial Sul"
                               value={novaEmpRazao}
                               onChange={e => setNovaEmpRazao(e.target.value)}
-                              className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-indigo-500"
+                              className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-indigo-500 font-medium"
                             />
                           </div>
 
-                          <div className="grid grid-cols-2 gap-3">
-                            <div>
-                              <label className="block text-[11px] font-bold text-slate-700 mb-1">Nome Fantasia / Sigla:</label>
-                              <input
-                                type="text"
-                                placeholder="Ex: Filial 03 - Curitiba"
-                                value={novaEmpFantasia}
-                                onChange={e => setNovaEmpFantasia(e.target.value)}
-                                className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-indigo-500"
-                              />
-                            </div>
-                            <div>
-                              <label className="block text-[11px] font-bold text-slate-700 mb-1">CNPJ:</label>
-                              <input
-                                type="text"
-                                placeholder="00.000.000/0002-00"
-                                value={novaEmpCnpj}
-                                onChange={e => setNovaEmpCnpj(e.target.value)}
-                                className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-900 font-mono focus:outline-none focus:border-indigo-500"
-                              />
-                            </div>
+                          <div>
+                            <label className="block text-[11px] font-bold text-slate-700 mb-1">Nome Fantasia / Sigla:</label>
+                            <input
+                              type="text"
+                              placeholder="Ex: Filial 03 - Curitiba"
+                              value={novaEmpFantasia}
+                              onChange={e => setNovaEmpFantasia(e.target.value)}
+                              className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-indigo-500 font-medium"
+                            />
                           </div>
 
                           <div className="grid grid-cols-3 gap-3">
@@ -2082,7 +2209,7 @@
                                 placeholder="Ex: São Paulo"
                                 value={novaEmpCidade}
                                 onChange={e => setNovaEmpCidade(e.target.value)}
-                                className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-indigo-500"
+                                className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-indigo-500 font-medium"
                               />
                             </div>
                             <div>

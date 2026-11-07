@@ -11,6 +11,7 @@ from app.services.planilha_service import gerar_modelo_planilha_exemplo, process
 from app.services.pdf_service import gerar_modelo_pdf_exemplo, processar_pdf_demonstracoes_com_jev
 from app.services.matriz_empresa_service import conglutinador_jev, ESTRUTURA_MATRIZ_PADRAO
 from app.services.empresas_plano_contas_service import empresas_plano_service
+from app.services.cnpj_service import consultar_dados_cnpj
 from app.services.security_middleware import SecurityHeadersMiddleware, verificar_token_acesso
 from fastapi.staticfiles import StaticFiles
 
@@ -714,6 +715,17 @@ def atualizar_mascara_plano_endpoint(req: MascaraPlanoRequest):
         "mascara_plano": mascara,
         "mascara_ativa": mascara
     }
+
+@app.get("/api/consultar-cnpj/{cnpj}")
+def consultar_cnpj_endpoint(cnpj: str):
+    """
+    Recupera os dados cadastrais da empresa diretamente da Receita Federal
+    a partir do CNPJ informado (Razão Social, Nome Fantasia, Cidade, UF, Matriz/Filial).
+    """
+    resultado = consultar_dados_cnpj(cnpj)
+    if not resultado.get("sucesso"):
+        return JSONResponse(status_code=400, content=resultado)
+    return resultado
 
 @app.post("/api/empresas")
 def cadastrar_empresa_endpoint(req: EmpresaCreateRequest):

@@ -17,7 +17,7 @@
   ],
   "plano_contas": [
     {
-      "id": "conta_75e769c3",
+      "id": "conta_948da1db",
       "codigo_contabil": "1.01.01",
       "codigo_reduzido": "000001",
       "ref": "",
@@ -31,13 +31,13 @@
       "empresa_id": "MATRIZ_GLOBAL",
       "escopo_label": "Corporativo Global (Matriz + Todas as Filiais)",
       "propagar_filiais": true,
-      "criado_em": "07/11/2026 00:23",
+      "criado_em": "07/11/2026 00:38",
       "tipo_conta": "ANALITICA",
       "natureza": "DEVEDORA",
       "peca_origem": "PLANO_DE_CONTAS"
     },
     {
-      "id": "conta_685c7b40",
+      "id": "conta_4b2eda6d",
       "codigo_contabil": "2.01.01",
       "codigo_reduzido": "000002",
       "ref": "",
@@ -51,13 +51,13 @@
       "empresa_id": "MATRIZ_GLOBAL",
       "escopo_label": "Corporativo Global (Matriz + Todas as Filiais)",
       "propagar_filiais": true,
-      "criado_em": "07/11/2026 00:23",
+      "criado_em": "07/11/2026 00:38",
       "tipo_conta": "ANALITICA",
       "natureza": "CREDORA",
       "peca_origem": "PLANO_DE_CONTAS"
     },
     {
-      "id": "conta_8c3cbd67",
+      "id": "conta_258046bd",
       "codigo_contabil": "2.03.01",
       "codigo_reduzido": "000003",
       "ref": "",
@@ -71,13 +71,13 @@
       "empresa_id": "MATRIZ_GLOBAL",
       "escopo_label": "Corporativo Global (Matriz + Todas as Filiais)",
       "propagar_filiais": true,
-      "criado_em": "07/11/2026 00:23",
+      "criado_em": "07/11/2026 00:38",
       "tipo_conta": "ANALITICA",
       "natureza": "CREDORA",
       "peca_origem": "PLANO_DE_CONTAS"
     },
     {
-      "id": "conta_3cb7f5c2",
+      "id": "conta_80ae61b1",
       "codigo_contabil": "3.01.01",
       "codigo_reduzido": "000004",
       "ref": "",
@@ -91,13 +91,13 @@
       "empresa_id": "MATRIZ_GLOBAL",
       "escopo_label": "Corporativo Global (Matriz + Todas as Filiais)",
       "propagar_filiais": true,
-      "criado_em": "07/11/2026 00:23",
+      "criado_em": "07/11/2026 00:38",
       "tipo_conta": "ANALITICA",
       "natureza": "CREDORA",
       "peca_origem": "PLANO_DE_CONTAS"
     },
     {
-      "id": "conta_a7f8960d",
+      "id": "conta_0d3d77e8",
       "codigo_contabil": "4.01.01",
       "codigo_reduzido": "000005",
       "ref": "",
@@ -111,7 +111,7 @@
       "empresa_id": "MATRIZ_GLOBAL",
       "escopo_label": "Corporativo Global (Matriz + Todas as Filiais)",
       "propagar_filiais": true,
-      "criado_em": "07/11/2026 00:23",
+      "criado_em": "07/11/2026 00:38",
       "tipo_conta": "ANALITICA",
       "natureza": "DEVEDORA",
       "peca_origem": "PLANO_DE_CONTAS"
