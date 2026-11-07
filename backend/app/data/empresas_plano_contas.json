@@ -17,8 +17,10 @@
   ],
   "plano_contas": [
     {
-      "id": "conta_3f1198ef",
+      "id": "conta_75e769c3",
       "codigo_contabil": "1.01.01",
+      "codigo_reduzido": "000001",
+      "ref": "",
       "nome_conta": "Caixa e Equivalentes de Caixa",
       "demonstracao": "BALANCO",
       "tipo_demonstracao": "BALANCO",
@@ -29,14 +31,16 @@
       "empresa_id": "MATRIZ_GLOBAL",
       "escopo_label": "Corporativo Global (Matriz + Todas as Filiais)",
       "propagar_filiais": true,
-      "criado_em": "06/11/2026 15:34",
+      "criado_em": "07/11/2026 00:23",
       "tipo_conta": "ANALITICA",
       "natureza": "DEVEDORA",
       "peca_origem": "PLANO_DE_CONTAS"
     },
     {
-      "id": "conta_f3719802",
+      "id": "conta_685c7b40",
       "codigo_contabil": "2.01.01",
+      "codigo_reduzido": "000002",
+      "ref": "",
       "nome_conta": "Fornecedores Nacionais",
       "demonstracao": "BALANCO",
       "tipo_demonstracao": "BALANCO",
@@ -47,14 +51,16 @@
       "empresa_id": "MATRIZ_GLOBAL",
       "escopo_label": "Corporativo Global (Matriz + Todas as Filiais)",
       "propagar_filiais": true,
-      "criado_em": "06/11/2026 15:34",
+      "criado_em": "07/11/2026 00:23",
       "tipo_conta": "ANALITICA",
       "natureza": "CREDORA",
       "peca_origem": "PLANO_DE_CONTAS"
     },
     {
-      "id": "conta_a122654a",
+      "id": "conta_8c3cbd67",
       "codigo_contabil": "2.03.01",
+      "codigo_reduzido": "000003",
+      "ref": "",
       "nome_conta": "Capital Social Subscrito",
       "demonstracao": "BALANCO",
       "tipo_demonstracao": "BALANCO",
@@ -65,14 +71,16 @@
       "empresa_id": "MATRIZ_GLOBAL",
       "escopo_label": "Corporativo Global (Matriz + Todas as Filiais)",
       "propagar_filiais": true,
-      "criado_em": "06/11/2026 15:34",
+      "criado_em": "07/11/2026 00:23",
       "tipo_conta": "ANALITICA",
       "natureza": "CREDORA",
       "peca_origem": "PLANO_DE_CONTAS"
     },
     {
-      "id": "conta_fc2ffe54",
+      "id": "conta_3cb7f5c2",
       "codigo_contabil": "3.01.01",
+      "codigo_reduzido": "000004",
+      "ref": "",
       "nome_conta": "Receita de Vendas de Mercadorias",
       "demonstracao": "DRE",
       "tipo_demonstracao": "DRE",
@@ -83,14 +91,16 @@
       "empresa_id": "MATRIZ_GLOBAL",
       "escopo_label": "Corporativo Global (Matriz + Todas as Filiais)",
       "propagar_filiais": true,
-      "criado_em": "06/11/2026 15:34",
+      "criado_em": "07/11/2026 00:23",
       "tipo_conta": "ANALITICA",
       "natureza": "CREDORA",
       "peca_origem": "PLANO_DE_CONTAS"
     },
     {
-      "id": "conta_7b64af86",
+      "id": "conta_a7f8960d",
       "codigo_contabil": "4.01.01",
+      "codigo_reduzido": "000005",
+      "ref": "",
       "nome_conta": "Custo da Mercadoria Vendida",
       "demonstracao": "DRE",
       "tipo_demonstracao": "DRE",
@@ -101,10 +111,11 @@
       "empresa_id": "MATRIZ_GLOBAL",
       "escopo_label": "Corporativo Global (Matriz + Todas as Filiais)",
       "propagar_filiais": true,
-      "criado_em": "06/11/2026 15:34",
+      "criado_em": "07/11/2026 00:23",
       "tipo_conta": "ANALITICA",
       "natureza": "DEVEDORA",
       "peca_origem": "PLANO_DE_CONTAS"
     }
-  ]
+  ],
+  "mascara_plano": "#.#.#.##.###"
 }

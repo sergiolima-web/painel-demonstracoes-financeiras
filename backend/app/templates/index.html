@@ -568,7 +568,76 @@
         }
       };
 
+      // =========================================================================
+      // FUNÇÃO DE MÁSCARA CONTÁBIL DINÂMICA EM TEMPO REAL:
+      // Conforme o usuário digita os números, os pontos surgem automaticamente
+      // de acordo com a máscara contábil ativa (ex: #.#.#.##.###)!
+      // =========================================================================
+      const formatarContaComMascara = (valorEntrada, mascara) => {
+        if (!valorEntrada) return '';
+        const masc = mascara || '#.#.#.##.###';
+        const blocos = masc.split('.').map(b => b.length);
+
+        // Se o usuário digitou pontos explicitamente
+        const partesEntrada = valorEntrada.split('.');
+        let precisaAutoPontos = false;
+        for (let i = 0; i < partesEntrada.length; i++) {
+          const maxBloco = blocos[i] || 3;
+          if (partesEntrada[i].length > maxBloco) {
+            precisaAutoPontos = true;
+            break;
+          }
+        }
+
+        // Se digitou números diretos ou excedeu o tamanho do bloco, formata os pontos automaticamente:
+        if (precisaAutoPontos || partesEntrada.length === 1) {
+          const digitos = valorEntrada.replace(/[^\d]/g, '');
+          let resultado = '';
+          let cursor = 0;
+
+          for (let i = 0; i < blocos.length; i++) {
+            const tamBloco = blocos[i];
+            if (cursor >= digitos.length) break;
+
+            if (i > 0) {
+              resultado += '.';
+            }
+
+            const fatia = digitos.substring(cursor, cursor + tamBloco);
+            resultado += fatia;
+            cursor += tamBloco;
+          }
+
+          return resultado;
+        }
+
+        return valorEntrada.replace(/[^\d.]/g, '');
+      };
+
+      const handleDigitarContaRapida = (valorBruto) => {
+        const formatado = formatarContaComMascara(valorBruto, mascaraPlano);
+        setLinhaRapidaConta(formatado);
+
+        // Atualiza em tempo real o indicador Analítica (S) vs Sintética (-)
+        const partesMasc = (mascaraPlano || '#.#.#.##.###').split('.').length;
+        const partesConta = (formatado || '').trim().split('.').length;
+        setLinhaRapidaRef(partesConta >= partesMasc ? 'S' : '');
+      };
+
       const handleKeyDownConta = (e) => {
+        if (e.key === 'Backspace') {
+          // Se o valor terminar com ponto ou for apagar próximo ao ponto, apaga suavemente
+          if (linhaRapidaConta.endsWith('.')) {
+            e.preventDefault();
+            const novo = linhaRapidaConta.slice(0, -1);
+            setLinhaRapidaConta(novo);
+            const partesMasc = (mascaraPlano || '#.#.#.##.###').split('.').length;
+            const partesConta = (novo || '').trim().split('.').length;
+            setLinhaRapidaRef(partesConta >= partesMasc ? 'S' : '');
+            return;
+          }
+        }
+
         if (e.key === 'Tab' || e.key === 'Enter') {
           if (!linhaRapidaReduzido) {
             const proxRed = String(planoContasLista.length + 1).padStart(6, '0');
@@ -2407,15 +2476,15 @@
                                 </span>
                               </td>
 
-                              {/* Coluna 2: Conta (com foco automático e tecla TAB) */}
+                              {/* Coluna 2: Conta (com foco automático, tecla TAB e máscara contábil dinâmica com pontos automáticos) */}
                               <td className="py-1.5 px-2.5 border-r border-indigo-200/60">
                                 <input
                                   ref={refInputConta}
                                   type="text"
                                   value={linhaRapidaConta}
-                                  onChange={e => setLinhaRapidaConta(e.target.value)}
+                                  onChange={e => handleDigitarContaRapida(e.target.value)}
                                   onKeyDown={handleKeyDownConta}
-                                  placeholder="Ex: 1.1.1.01.001"
+                                  placeholder={`Ex: ${(mascaraPlano || '#.#.#.##.###').replace(/#/g, '1')}`}
                                   className="w-full px-2.5 py-1 font-mono text-xs font-bold bg-white border border-indigo-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600 text-indigo-950 placeholder-slate-400 shadow-2xs transition-all"
                                 />
                               </td>
