@@ -2376,39 +2376,39 @@
                       </div>
                     )}
 
-                    {/* GRADE / PLANILHA CONTÁBIL DE ALTA DENSIDADE COM DIGITAÇÃO CONTÍNUA VIA TAB */}
-                    <div className="bg-white border border-slate-300 rounded-xl shadow-sm overflow-hidden">
-                      <div className="overflow-x-auto max-h-[680px] overflow-y-auto">
+                    {/* GRADE / PLANILHA CONTÁBIL DE ALTA DENSIDADE COM DESIGN MODERNO (SAAS CONTÁBIL 2026) */}
+                    <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+                      <div className="overflow-x-auto max-h-[700px] overflow-y-auto">
                         <table className="w-full text-left text-xs border-collapse">
-                          {/* CABEÇALHO DA TABELA CONTÁBIL */}
-                          <thead className="bg-slate-200 text-slate-800 font-extrabold uppercase text-[11px] border-b-2 border-slate-300 sticky top-0 z-20 shadow-sm select-none">
+                          {/* CABEÇALHO MODERNO DA TABELA */}
+                          <thead className="bg-slate-100/90 text-slate-700 font-bold uppercase text-[10px] tracking-wider border-b border-slate-200 sticky top-0 z-20 backdrop-blur-md select-none">
                             <tr>
-                              <th className="py-2 px-2 text-center w-12 border-r border-slate-300" title="Referência / Analítica">Ref.</th>
-                              <th className="py-2 px-3 w-40 border-r border-slate-300">Conta</th>
-                              <th className="py-2 px-3 w-28 border-r border-slate-300">Reduzido</th>
-                              <th className="py-2 px-3 border-r border-slate-300">Nome da Conta Contábil</th>
-                              <th className="py-2 px-2 w-24 text-center border-r border-slate-300">Demonstr.</th>
-                              <th className="py-2 px-3 w-48 border-r border-slate-300">Amarração Matriz</th>
-                              <th className="py-2 px-2 w-14 text-center">Ações</th>
+                              <th className="py-2.5 px-2.5 text-center w-14 border-r border-slate-200/60" title="Referência Contábil (S = Analítica)">Ref.</th>
+                              <th className="py-2.5 px-3.5 w-44 border-r border-slate-200/60">Conta Contábil</th>
+                              <th className="py-2.5 px-3 w-28 text-center border-r border-slate-200/60">Reduzido</th>
+                              <th className="py-2.5 px-3.5 border-r border-slate-200/60">Nome da Conta Contábil</th>
+                              <th className="py-2.5 px-2.5 w-24 text-center border-r border-slate-200/60">Demonstr.</th>
+                              <th className="py-2.5 px-3.5 w-52 border-r border-slate-200/60">Amarração Matriz</th>
+                              <th className="py-2.5 px-2 w-14 text-center">Ações</th>
                             </tr>
                           </thead>
 
                           <tbody>
-                            {/* LINHA DE INSERÇÃO CONTÍNUA RÁPIDA (FIXADA NO TOPO - CADASTRO EM LOTE VIA TAB / ENTER) */}
-                            <tr className="bg-sky-50 border-b-2 border-indigo-400 sticky top-[33px] z-10 shadow-sm">
+                            {/* LINHA DE INSERÇÃO CONTÍNUA MODERNA (FIXADA NO TOPO - CADASTRO EM LOTE VIA TAB / ENTER) */}
+                            <tr className="bg-gradient-to-r from-indigo-50/70 via-sky-50/50 to-indigo-50/70 border-b-2 border-indigo-400/80 sticky top-[33px] z-10 shadow-xs">
                               {/* Coluna 1: Ref */}
-                              <td className="py-1.5 px-2 text-center border-r border-indigo-200">
-                                <span className={`inline-block font-black text-[11px] px-1.5 py-0.5 rounded ${
+                              <td className="py-1.5 px-2 text-center border-r border-indigo-200/60">
+                                <span className={`inline-flex items-center justify-center px-1.5 py-0.5 rounded-md font-black text-[10px] shadow-2xs ${
                                   linhaRapidaRef === 'S'
                                     ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
-                                    : 'bg-slate-100 text-slate-400'
+                                    : 'bg-slate-100 text-slate-400 border border-slate-200'
                                 }`}>
                                   {linhaRapidaRef || '-'}
                                 </span>
                               </td>
 
                               {/* Coluna 2: Conta (com foco automático e tecla TAB) */}
-                              <td className="py-1 px-2 border-r border-indigo-200">
+                              <td className="py-1.5 px-2.5 border-r border-indigo-200/60">
                                 <input
                                   ref={refInputConta}
                                   type="text"
@@ -2416,12 +2416,12 @@
                                   onChange={e => setLinhaRapidaConta(e.target.value)}
                                   onKeyDown={handleKeyDownConta}
                                   placeholder="Ex: 1.1.1.01.001"
-                                  className="w-full px-2 py-1 font-mono text-xs font-bold bg-white border border-indigo-300 rounded focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-amber-50 text-indigo-950 placeholder-slate-400"
+                                  className="w-full px-2.5 py-1 font-mono text-xs font-bold bg-white border border-indigo-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600 text-indigo-950 placeholder-slate-400 shadow-2xs transition-all"
                                 />
                               </td>
 
                               {/* Coluna 3: Código Reduzido (auto-calculado com tecla TAB) */}
-                              <td className="py-1 px-2 border-r border-indigo-200">
+                              <td className="py-1.5 px-2 border-r border-indigo-200/60">
                                 <input
                                   ref={refInputReduzido}
                                   type="text"
@@ -2429,13 +2429,13 @@
                                   onChange={e => setLinhaRapidaReduzido(e.target.value)}
                                   onKeyDown={handleKeyDownReduzido}
                                   placeholder="Auto"
-                                  className="w-full px-2 py-1 font-mono text-xs font-bold bg-white border border-indigo-300 rounded focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-900 placeholder-slate-400"
+                                  className="w-full px-2 py-1 font-mono text-xs font-bold text-center bg-white border border-indigo-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600 text-slate-900 placeholder-slate-400 shadow-2xs transition-all"
                                 />
                               </td>
 
                               {/* Coluna 4: Nome da Conta (ao pressionar TAB ou ENTER -> SALVA E PULA PARA NOVA LINHA!) */}
-                              <td className="py-1 px-2 border-r border-indigo-200">
-                                <div className="flex items-center gap-1.5">
+                              <td className="py-1.5 px-2.5 border-r border-indigo-200/60">
+                                <div className="flex items-center gap-2">
                                   <input
                                     ref={refInputNome}
                                     type="text"
@@ -2443,16 +2443,17 @@
                                     onChange={e => setLinhaRapidaNome(e.target.value)}
                                     onKeyDown={handleKeyDownNome}
                                     placeholder="Nome da Conta Contábil (Aperte TAB ou ENTER para salvar e pular)"
-                                    className="w-full px-2 py-1 text-xs font-semibold bg-white border border-indigo-300 rounded focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-amber-50 text-slate-900 placeholder-slate-400"
+                                    className="w-full px-2.5 py-1 text-xs font-semibold bg-white border border-indigo-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600 text-slate-900 placeholder-slate-400 shadow-2xs transition-all"
                                   />
-                                  <span className="hidden xl:inline-block text-[10px] font-bold text-indigo-700 bg-indigo-100 px-2 py-0.5 rounded whitespace-nowrap">
-                                    TAB / Enter = Salva ➔ Pula
+                                  <span className="hidden xl:inline-flex items-center gap-1 text-[10px] font-bold text-indigo-700 bg-indigo-100/90 border border-indigo-200 px-2 py-0.5 rounded-md whitespace-nowrap shrink-0 shadow-2xs">
+                                    <span>TAB / Enter</span>
+                                    <span>➔ Salva</span>
                                   </span>
                                 </div>
                               </td>
 
                               {/* Coluna 5: Demonstração */}
-                              <td className="py-1 px-2 border-r border-indigo-200 text-center">
+                              <td className="py-1.5 px-2 border-r border-indigo-200/60 text-center">
                                 <select
                                   value={linhaRapidaDemonstracao}
                                   onChange={e => {
@@ -2461,7 +2462,7 @@
                                     if (d === 'BALANCO') setLinhaRapidaDestino('ativo_circulante');
                                     else setLinhaRapidaDestino('vendas_mercadorias');
                                   }}
-                                  className="w-full px-1.5 py-1 bg-white border border-indigo-300 rounded text-[11px] font-bold text-slate-800 focus:outline-none"
+                                  className="w-full px-2 py-1 bg-white border border-indigo-200 rounded-lg text-[11px] font-bold text-slate-800 focus:outline-none focus:border-indigo-600 shadow-2xs cursor-pointer"
                                 >
                                   <option value="DRE">DRE</option>
                                   <option value="BALANCO">BALANÇO</option>
@@ -2469,12 +2470,12 @@
                               </td>
 
                               {/* Coluna 6: Amarração Destino */}
-                              <td className="py-1 px-2 border-r border-indigo-200">
+                              <td className="py-1.5 px-2.5 border-r border-indigo-200/60">
                                 {linhaRapidaDemonstracao === 'BALANCO' ? (
                                   <select
                                     value={linhaRapidaDestino}
                                     onChange={e => setLinhaRapidaDestino(e.target.value)}
-                                    className="w-full px-2 py-1 bg-white border border-indigo-300 rounded text-[11px] text-slate-800 focus:outline-none"
+                                    className="w-full px-2 py-1 bg-white border border-indigo-200 rounded-lg text-[11px] text-slate-800 focus:outline-none focus:border-indigo-600 shadow-2xs cursor-pointer"
                                   >
                                     <option value="ativo_circulante">Ativo Circulante</option>
                                     <option value="ativo_nao_circulante">Ativo Não Circulante</option>
@@ -2486,7 +2487,7 @@
                                   <select
                                     value={linhaRapidaDestino}
                                     onChange={e => setLinhaRapidaDestino(e.target.value)}
-                                    className="w-full px-2 py-1 bg-white border border-indigo-300 rounded text-[11px] text-slate-800 focus:outline-none"
+                                    className="w-full px-2 py-1 bg-white border border-indigo-200 rounded-lg text-[11px] text-slate-800 focus:outline-none focus:border-indigo-600 shadow-2xs cursor-pointer"
                                   >
                                     <option value="vendas_mercadorias">1.01 Vendas de Mercadorias</option>
                                     <option value="vendas_canceladas">2.01 (-) Vendas Canceladas</option>
@@ -2510,12 +2511,12 @@
                               </td>
 
                               {/* Coluna 7: Botão Salvar Linha Rápida */}
-                              <td className="py-1 px-2 text-center">
+                              <td className="py-1.5 px-2 text-center">
                                 <button
                                   type="button"
                                   onClick={handleGravarLinhaRapida}
                                   disabled={salvandoLinhaRapida || !linhaRapidaConta.trim() || !linhaRapidaNome.trim()}
-                                  className="w-full py-1 rounded bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs transition-all shadow-sm"
+                                  className="w-full py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white font-black text-xs transition-all shadow-sm flex items-center justify-center cursor-pointer"
                                   title="Salvar esta conta e abrir próxima linha"
                                 >
                                   {salvandoLinhaRapida ? '...' : '➕'}
@@ -2523,7 +2524,7 @@
                               </td>
                             </tr>
 
-                            {/* LISTAGEM DAS CONTAS CADASTRADAS COM DESTAQUES VISUAIS HIERÁRQUICOS */}
+                            {/* LISTAGEM DAS CONTAS CADASTRADAS COM DESIGN MODERNO E HIERARQUIA REFINADA */}
                             {planoContasLista
                               .filter(c => {
                                 if (empresaSelecionadaFiltro !== 'CONSOLIDADO') {
@@ -2543,84 +2544,105 @@
                                 );
                               })
                               .map((c, idx) => {
-                                // Determinação do nível hierárquico pela quantidade de partes separadas por ponto
                                 const partes = (c.codigo_contabil || '').split('.');
                                 const qtdNiveis = partes.length;
                                 const partesMascara = (mascaraPlano || '#.#.#.##.###').split('.').length;
-                                
-                                // Nível 1: Azul claro (Ex: 1 ATIVO, 2 PASSIVO)
+
+                                // Verifica se esta conta possui filhas cadastradas abaixo dela
+                                const temFilhas = planoContasLista.some(
+                                  outra => outra.codigo_contabil !== c.codigo_contabil &&
+                                  (outra.codigo_contabil || '').startsWith(c.codigo_contabil + '.')
+                                );
+
+                                // Nível 1: Grupo Mestre Sintético (Ex: 1 ATIVO, 2 PASSIVO, 3 DRE)
                                 const ehNivel1 = qtdNiveis === 1 && c.codigo_contabil.length <= 2;
 
-                                // Nível 2 e 3: Amarelo suave/destacado (Ex: 1.1 CIRCULANTE, 1.1.1 DISPONÍVEL, 1.1.2 REALIZÁVEL)
-                                const ehNivel2ou3 = (qtdNiveis === 2 || qtdNiveis === 3) && !c.ref;
+                                // Analítica: Possui Ref 'S' OU não tem contas filhas abaixo dela e nível >= 2
+                                const ehAnalitica = c.ref === 'S' || (!temFilhas && qtdNiveis >= 2) || qtdNiveis >= partesMascara;
 
-                                // Analítica: Contas no nível folha
-                                const ehAnalitica = c.ref === 'S' || qtdNiveis >= partesMascara;
+                                // Sintética Intermediária: Possui filhas e não é analítica
+                                const ehSintetica = !ehAnalitica;
 
-                                // Classes de estilo por hierarquia
-                                let classeLinha = 'hover:bg-slate-100 transition-colors border-b border-slate-200';
+                                // Estilo Moderno por Hierarquia (sem amarelo berrante!)
+                                let classeLinha = 'hover:bg-slate-50 transition-colors border-b border-slate-100';
                                 if (ehNivel1) {
-                                  classeLinha = 'bg-sky-100/90 hover:bg-sky-200/80 text-sky-950 font-black border-y border-sky-300';
-                                } else if (ehNivel2ou3) {
-                                  classeLinha = 'bg-yellow-200/90 hover:bg-yellow-300/80 text-yellow-950 font-bold border-y border-yellow-300';
+                                  classeLinha = 'bg-sky-50/90 hover:bg-sky-100/80 text-sky-950 font-black border-y border-sky-200/80 border-l-4 border-l-sky-600';
+                                } else if (ehSintetica) {
+                                  classeLinha = 'bg-amber-50/40 hover:bg-amber-100/50 text-amber-950 font-bold border-y border-amber-200/60 border-l-4 border-l-amber-500/80';
                                 } else if (idx % 2 === 1) {
-                                  classeLinha = 'bg-slate-50/70 hover:bg-slate-100 transition-colors border-b border-slate-200';
+                                  classeLinha = 'bg-slate-50/40 hover:bg-slate-100/70 transition-colors border-b border-slate-100';
                                 }
 
                                 return (
                                   <tr key={c.id || idx} className={classeLinha}>
                                     {/* Ref */}
-                                    <td className="py-1.5 px-2 text-center border-r border-slate-200">
+                                    <td className="py-2 px-2 text-center border-r border-slate-100">
                                       {ehAnalitica ? (
-                                        <span className="font-black text-[11px] text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded border border-emerald-300">
+                                        <span className="inline-flex items-center justify-center px-1.5 py-0.5 rounded-md font-black text-[10px] bg-emerald-100 text-emerald-800 border border-emerald-300 shadow-2xs">
                                           S
                                         </span>
                                       ) : (
-                                        <span className="text-slate-400 text-[10px]">-</span>
+                                        <span className="text-slate-400 font-mono text-[10px]">-</span>
                                       )}
                                     </td>
 
                                     {/* Código Contábil */}
-                                    <td className="py-1.5 px-3 font-mono font-bold text-xs border-r border-slate-200">
-                                      <span className={ehNivel1 ? 'text-sky-950 font-black' : ehNivel2ou3 ? 'text-yellow-950 font-black' : 'text-slate-900'}>
+                                    <td className="py-2 px-3.5 font-mono text-xs border-r border-slate-100">
+                                      <span className={`${
+                                        ehNivel1
+                                          ? 'text-sky-950 font-black'
+                                          : ehSintetica
+                                            ? 'text-amber-900 font-black'
+                                            : 'text-slate-800 font-semibold'
+                                      }`}>
                                         {c.codigo_contabil}
                                       </span>
                                     </td>
 
                                     {/* Reduzido */}
-                                    <td className="py-1.5 px-3 font-mono text-xs text-slate-700 border-r border-slate-200">
-                                      {c.codigo_reduzido || String(idx + 1).padStart(6, '0')}
+                                    <td className="py-2 px-3 text-center border-r border-slate-100">
+                                      <span className="font-mono text-[11px] font-semibold text-slate-600 bg-slate-100/80 px-2 py-0.5 rounded border border-slate-200/70">
+                                        {c.codigo_reduzido || String(idx + 1).padStart(6, '0')}
+                                      </span>
                                     </td>
 
                                     {/* Nome da Conta */}
-                                    <td className="py-1.5 px-3 border-r border-slate-200">
-                                      <span className={`${ehNivel1 ? 'font-black tracking-wide text-sky-950' : ehNivel2ou3 ? 'font-bold uppercase text-yellow-950' : 'font-normal text-slate-900'}`}>
+                                    <td className="py-2 px-3.5 border-r border-slate-100">
+                                      <span className={`${
+                                        ehNivel1
+                                          ? 'font-black tracking-wide text-sky-950 uppercase text-xs'
+                                          : ehSintetica
+                                            ? 'font-bold uppercase text-amber-950 text-xs'
+                                            : 'font-normal text-slate-800 text-xs'
+                                      }`}>
                                         {c.nome_conta}
                                       </span>
                                     </td>
 
                                     {/* Demonstração */}
-                                    <td className="py-1.5 px-2 text-center border-r border-slate-200">
-                                      <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                                    <td className="py-2 px-2 text-center border-r border-slate-100">
+                                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-extrabold shadow-2xs ${
                                         c.demonstracao === 'BALANCO'
-                                          ? 'bg-purple-100 text-purple-900 border border-purple-200'
-                                          : 'bg-cyan-100 text-cyan-900 border border-cyan-200'
+                                          ? 'bg-purple-50 text-purple-700 border border-purple-200'
+                                          : 'bg-cyan-50 text-cyan-700 border border-cyan-200'
                                       }`}>
                                         {c.demonstracao || 'DRE'}
                                       </span>
                                     </td>
 
                                     {/* Amarração Matriz */}
-                                    <td className="py-1.5 px-3 border-r border-slate-200 font-mono text-[11px] text-slate-700 truncate max-w-[200px]" title={c.conta_destino_matriz_id}>
-                                      {c.conta_destino_matriz_id || '-'}
+                                    <td className="py-2 px-3.5 border-r border-slate-100">
+                                      <span className="font-mono text-[11px] text-slate-700 bg-slate-100/70 px-2.5 py-0.5 rounded-md border border-slate-200 truncate inline-block max-w-[210px]" title={c.conta_destino_matriz_id}>
+                                        {c.conta_destino_matriz_id || '-'}
+                                      </span>
                                     </td>
 
                                     {/* Ações */}
-                                    <td className="py-1.5 px-2 text-center">
+                                    <td className="py-2 px-2 text-center">
                                       <button
                                         type="button"
                                         onClick={() => handleRemoverContaPlano(c.id)}
-                                        className="text-slate-400 hover:text-rose-600 transition-colors p-1"
+                                        className="h-6 w-6 rounded-md hover:bg-rose-50 text-slate-400 hover:text-rose-600 transition-colors inline-flex items-center justify-center cursor-pointer"
                                         title="Remover Conta"
                                       >
                                         🗑️
@@ -2632,12 +2654,12 @@
 
                             {planoContasLista.length === 0 && (
                               <tr>
-                                <td colSpan={7} className="py-8 text-center text-slate-500">
-                                  <div className="space-y-2">
+                                <td colSpan={7} className="py-12 text-center text-slate-500">
+                                  <div className="space-y-2 max-w-sm mx-auto">
                                     <span className="text-3xl block">📑</span>
-                                    <p className="font-bold text-slate-700">Nenhuma conta cadastrada no Plano de Contas.</p>
-                                    <p className="text-xs text-slate-500">
-                                      Digite o código contábil na barra azul do topo e pressione <strong>TAB</strong> para cadastrar contas continuamente, ou clique em <strong>Importar Planilha/PDF</strong>.
+                                    <p className="font-bold text-slate-800 text-sm">Nenhuma conta cadastrada no Plano de Contas.</p>
+                                    <p className="text-xs text-slate-500 leading-relaxed">
+                                      Digite o código contábil na barra do topo e pressione <strong>TAB</strong> para cadastrar continuamente por teclado, ou clique em <strong>Importar Planilha/PDF</strong>.
                                     </p>
                                   </div>
                                 </td>
@@ -2647,26 +2669,30 @@
                         </table>
                       </div>
 
-                      {/* RODAPÉ CONTÁBIL COM CONTAGEM E STATUS DA MÁSCARA */}
-                      <div className="bg-slate-100 border-t border-slate-300 px-4 py-2 text-xs font-bold text-slate-700 flex flex-wrap items-center justify-between gap-2 select-none">
-                        <div className="flex items-center gap-3">
-                          <span>
-                            📊 <strong>{planoContasLista.length}</strong> contas cadastradas
+                      {/* RODAPÉ CONTÁBIL MODERNO */}
+                      <div className="bg-slate-50/90 border-t border-slate-200 px-4 py-2.5 text-xs text-slate-600 flex flex-wrap items-center justify-between gap-3 select-none">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white border border-slate-200 font-bold text-slate-800 shadow-2xs">
+                            <span>📊</span>
+                            <span><strong>{planoContasLista.length}</strong> contas cadastradas</span>
                           </span>
-                          <span className="text-slate-400">|</span>
-                          <span className="text-emerald-700">
-                            • <strong>{planoContasLista.filter(c => c.ref === 'S' || (c.codigo_contabil || '').split('.').length >= (mascaraPlano || '#.#.#.##.###').split('.').length).length}</strong> Analíticas (Ref. S)
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-50 border border-emerald-200 font-bold text-emerald-800 shadow-2xs">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                            <span><strong>{planoContasLista.filter(c => c.ref === 'S' || (!planoContasLista.some(o => o.codigo_contabil !== c.codigo_contabil && (o.codigo_contabil || '').startsWith(c.codigo_contabil + '.')) && (c.codigo_contabil || '').split('.').length >= 2)).length}</strong> Analíticas (Ref. S)</span>
                           </span>
-                          <span className="text-slate-400">|</span>
-                          <span className="text-amber-700">
-                            • <strong>{planoContasLista.filter(c => !(c.ref === 'S' || (c.codigo_contabil || '').split('.').length >= (mascaraPlano || '#.#.#.##.###').split('.').length)).length}</strong> Sintéticas
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-50 border border-amber-200 font-bold text-amber-900 shadow-2xs">
+                            <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+                            <span><strong>{planoContasLista.filter(c => !(c.ref === 'S' || (!planoContasLista.some(o => o.codigo_contabil !== c.codigo_contabil && (o.codigo_contabil || '').startsWith(c.codigo_contabil + '.')) && (c.codigo_contabil || '').split('.').length >= 2))).length}</strong> Sintéticas</span>
                           </span>
                         </div>
 
-                        <div className="flex items-center gap-2 text-[11px] text-slate-500">
-                          <span>Máscara Contábil Ativa: <strong className="font-mono text-indigo-700">{mascaraPlano}</strong></span>
+                        <div className="flex items-center gap-2 text-[11px] text-slate-500 flex-wrap">
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-indigo-50 border border-indigo-200 font-bold text-indigo-700">
+                            <span>Máscara:</span>
+                            <span className="font-mono">{mascaraPlano}</span>
+                          </span>
                           <span>•</span>
-                          <span>Atalho: Digite a Conta ➔ <strong>TAB</strong> ➔ <strong>TAB</strong> ➔ Nome ➔ <strong>Enter</strong></span>
+                          <span>Atalho: Digite a Conta ➔ <kbd className="px-1.5 py-0.5 bg-white border border-slate-300 rounded text-[10px] font-mono shadow-2xs text-slate-700">TAB</kbd> ➔ <kbd className="px-1.5 py-0.5 bg-white border border-slate-300 rounded text-[10px] font-mono shadow-2xs text-slate-700">TAB</kbd> ➔ Nome ➔ <kbd className="px-1.5 py-0.5 bg-white border border-slate-300 rounded text-[10px] font-mono shadow-2xs text-slate-700">Enter</kbd></span>
                         </div>
                       </div>
                     </div>
