@@ -1219,6 +1219,45 @@
                   </div>
                 </div>
 
+                {/* Centro: Caixa de Identificação da Empresa Ativa (Solicitada pelo Usuário) */}
+                {(() => {
+                  const empAtivaObj = empresasLista.find(e => e.id === empresaSelecionadaPortal);
+                  const nomeEmpresa = empresaSelecionadaPortal === 'CONSOLIDADO'
+                    ? (empresasLista.find(e => e.tipo === 'MATRIZ')?.razao_social || 'Matriz Corporativa (Visão Consolidada)')
+                    : (empAtivaObj?.razao_social || empAtivaObj?.nome_fantasia || 'Empresa Ativa');
+                  const subtituloEmpresa = empresaSelecionadaPortal === 'CONSOLIDADO'
+                    ? '🏛️ Matriz Principal • Visão Consolidada'
+                    : `🏬 ${empAtivaObj?.nome_fantasia ? empAtivaObj.nome_fantasia + ' • ' : ''}${empAtivaObj?.cidade || 'SP'}/${empAtivaObj?.uf || 'SP'} • CNPJ: ${empAtivaObj?.cnpj || ''}`;
+
+                  return (
+                    <div
+                      onClick={() => setPortalAcessoAberto(true)}
+                      className="hidden md:flex items-center gap-3 px-3.5 py-1.5 bg-slate-50/90 hover:bg-amber-50/70 border border-slate-300 hover:border-amber-400 rounded-xl transition-all shadow-sm cursor-pointer group min-w-[260px] max-w-md shrink-0"
+                      title="Clique para alternar entre Matriz e Filiais ou trocar de exercício"
+                    >
+                      <div className="h-9 w-9 rounded-lg bg-gradient-to-tr from-amber-500/20 to-yellow-500/20 border border-amber-400/50 flex items-center justify-center text-base shrink-0 group-hover:scale-105 transition-transform">
+                        {empresaSelecionadaPortal === 'CONSOLIDADO' ? '🏛️' : '🏬'}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center justify-between gap-1">
+                          <span className="text-[10px] font-black uppercase tracking-wider text-amber-900">
+                            Empresa Selecionada:
+                          </span>
+                          <span className="text-[10px] font-bold text-slate-400 group-hover:text-amber-800 transition-colors">
+                            Trocar ▾
+                          </span>
+                        </div>
+                        <div className="text-xs font-black text-slate-900 truncate tracking-tight">
+                          {nomeEmpresa}
+                        </div>
+                        <div className="text-[10px] text-slate-500 truncate">
+                          {subtituloEmpresa}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
+
                 {/* Lado Direito: Ações e Atalhos Organizados */}
                 <div className="flex items-center gap-2 shrink-0">
                   {/* Botão para Retornar ao Hub Enxuto ou Trocar de Empresa/Ano */}
