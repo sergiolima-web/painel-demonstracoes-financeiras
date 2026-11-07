@@ -10,6 +10,7 @@ from typing import Dict, Any, List, Optional, Tuple
 from app.services.jev_service import jev_service
 from app.services.calculos_indices import CalculadoraIndicesFinanceiros
 from app.services.matriz_empresa_service import conglutinador_jev
+from app.services.empresas_plano_contas_service import empresas_plano_service
 
 
 def _limpar_valor_numerico(texto: Any) -> Optional[float]:
@@ -328,12 +329,17 @@ def processar_pdf_demonstracoes_com_jev(
                 s_atual = item["saldo_atual"]
                 s_ant = item["saldo_anterior"]
 
-                # Detectar se pertence à DRE
+                # Detectar rigorosamente se pertence à DRE
+                cod_limpo = re.sub(r"[^0-9]", "", cod)
                 pertence_dre = any(palavra in desc.lower() for palavra in [
-                    'receita', 'custo', 'cpv', 'csv', 'despesa', 'lucro líquido', 
+                    'receita', 'custo', 'cpv', 'csv', 'despesa', 'lucro líquido', 'lucro liquido',
                     'ebitda', 'lucro operacional', 'imposto de renda', 'irpj', 'csll',
-                    'resultado financeiro', 'vendas e marketing', 'administrativa'
-                ]) or cod.startswith('4.') or cod.startswith('3.02')
+                    'resultado financeiro', 'vendas e marketing', 'administrativa',
+                    'vendas canceladas', 'impostos incidentes', 'icms sobre', 'pis faturamento',
+                    'cofins faturamento', 'salarios e ordenados', 'salarios', 'gratificacoes',
+                    'ferias', '13o', '13º', 'rescisoes', 'hora extra', 'dsr', 'adicional noturno',
+                    'lucro bruto'
+                ]) or cod_limpo.startswith(('3', '4', '5', '6', '7'))
 
                 if pertence_dre:
                     var_pct = ((s_atual - s_ant) / abs(s_ant) * 100) if s_ant != 0 else 0.0
@@ -345,12 +351,26 @@ def processar_pdf_demonstracoes_com_jev(
                         "variacao_percentual": round(var_pct, 2)
                     })
                 else:
-                    # Linha de Balanço Patrimonial
+                    # Linha de Balanço Patrimonial com validação JEV
                     decisao_jev = jev_service.classificar_conta_contabil(
                         conta=f"{cod} - {desc}" if cod else desc,
                         descricao=f"Balanço Patrimonial extraído de PDF. Saldo Atual: R$ {s_atual:,.2f}",
                         saldo=s_atual
                     )
+
+                    grupo_escolhido = decisao_jev.get("grupo_escolhido") or ""
+                    # Se o JEV identificar como DRE, nunca contamina o Balanço!
+                    if "DRE" in grupo_escolhido.upper():
+                        var_pct = ((s_atual - s_ant) / abs(s_ant) * 100) if s_ant != 0 else 0.0
+                        itens_dre.append({
+                            "codigo": cod,
+                            "conta": desc,
+                            "saldo_atual": s_atual,
+                            "saldo_anterior": s_ant,
+                            "variacao_percentual": round(var_pct, 2),
+                            "grupo": grupo_escolhido
+                        })
+                        continue
 
                     var_pct = ((s_atual - s_ant) / abs(s_ant) * 100) if s_ant != 0 else 0.0
 
@@ -363,7 +383,7 @@ def processar_pdf_demonstracoes_com_jev(
                         "saldos_anuais": {"2024": s_atual, "2023": s_ant},
                         "variacao_nominal": s_atual - s_ant,
                         "variacao_percentual": round(var_pct, 2),
-                        "grupo": decisao_jev["grupo_escolhido"],
+                        "grupo": grupo_escolhido,
                         "confianca_ia": decisao_jev["confianca_classificacao"],
                         "score_relevancia": decisao_jev["score_relevancia"],
                         "probabilidade_anomalia": decisao_jev["probabilidade_anomalia"],

@@ -5,6 +5,7 @@ from typing import Dict, Any, List, Optional, Tuple
 from app.services.jev_service import jev_service
 from app.services.calculos_indices import CalculadoraIndicesFinanceiros
 from app.services.matriz_empresa_service import conglutinador_jev
+from app.services.empresas_plano_contas_service import empresas_plano_service
 
 def _limpar_valor_numerico_universal(texto: Any) -> float:
     """
@@ -262,6 +263,65 @@ def _encontrar_cabecalho_e_colunas(df_raw: pd.DataFrame) -> Tuple[pd.DataFrame, 
 
     return df, col_codigo, col_desc, col_atual, col_anterior, cols_trimestrais, cols_anos
 
+def _classificar_linha_balanco_ou_dre(linha: Dict[str, Any], mapa_plano: Optional[Dict[str, Any]] = None) -> str:
+    """
+    Classifica rigorosamente uma linha contábil entre 'BALANCO' ou 'DRE'.
+    Garante que jamais ocorra vazamento ou poluição de contas de DRE para dentro do Balanço!
+    
+    Critério 1: Cadastro Oficial do Plano de Contas.
+    Critério 2: Código Contábil Estruturado (1=Ativo, 2=Passivo/PL -> BALANCO; 3, 4, 5... -> DRE).
+    Critério 3: Análise Semântica de Terminologia Contábil.
+    """
+    cod_raw = str(linha.get("codigo") or "").strip()
+    desc_raw = str(linha.get("conta") or "").strip()
+    cod_limpo = re.sub(r"[^0-9]", "", cod_raw)
+    desc_norm = _normalizar_texto(desc_raw)
+
+    # 1. Consulta ao Plano de Contas cadastrado da Empresa
+    if mapa_plano:
+        conta_plano = mapa_plano.get(cod_limpo) or mapa_plano.get(cod_raw)
+        if conta_plano:
+            dem = str(conta_plano.get("tipo_demonstracao") or conta_plano.get("demonstracao") or "").upper()
+            if "DRE" in dem:
+                return "DRE"
+            elif "BALAN" in dem:
+                return "BALANCO"
+
+    # 2. Termos estritos e inconfundíveis de DRE (Receitas, Deduções, Custos e Despesas)
+    termos_estritos_dre = [
+        'vendas canceladas', 'impostos incidentes', 'icms sobre vendas', 'pis faturamento',
+        'cofins faturamento', 'iss sobre', 'lucro bruto', 'salarios e ordenados', 'salarios',
+        'ordenados', 'gratificacoes', 'ferias', '13o salario', '13 salario', '13º salario',
+        'rescisoes', 'hora extra', 'dsr', 'adicional noturno', 'deducoes da receita',
+        'custo das mercadorias', 'custo dos produtos', 'custo dos servicos', 'cpv', 'cmv', 'csv',
+        'despesas operacionais', 'despesas administrativas', 'despesas comerciais', 'despesas com pessoal',
+        'despesa com vendas', 'receita bruta', 'receita liquida', 'lucro operacional',
+        'resultado financeiro', 'despesas financeiras', 'receitas financeiras', 'lucro liquido'
+    ]
+    # Se a conta contiver esses termos e NÃO for uma obrigação a pagar/recolher
+    if any(t in desc_norm for t in termos_estritos_dre) and not any(p in desc_norm for p in ['a pagar', 'a recolher', 'provisao para']):
+        return "DRE"
+
+    # 3. Código Contábil Universal (Padrão Contábil Oficial Brasileiro)
+    if cod_limpo:
+        if cod_limpo.startswith(("1", "2")):
+            return "BALANCO"
+        elif cod_limpo.startswith(("3", "4", "5", "6", "7", "8", "9")):
+            return "DRE"
+
+    # 4. Análise Semântica de Termos de Balanço Patrimonial (Ativo, Passivo e PL)
+    termos_balanco = [
+        'caixa', 'banco conta', 'aplicacao financeira', 'cliente', 'duplicatas a receber',
+        'estoque', 'imobilizado', 'intangivel', 'investimento', 'fornecedor',
+        'emprestimo', 'financiamento', 'obrigacao', 'salarios a pagar', 'tributos a recolher',
+        'impostos a recolher', 'capital social', 'patrimonio liquido', 'reserva de capital',
+        'lucros acumulados', 'prejuizos acumulados'
+    ]
+    if any(t in desc_norm for t in termos_balanco):
+        return "BALANCO"
+
+    return "DRE" if cod_limpo.startswith(("3", "4", "5")) else "BALANCO"
+
 def _identificar_tipo_demonstracao(itens: List[Dict[str, Any]]) -> str:
     """
     Identifica de forma semântica se uma lista de contas pertence à DRE ou ao Balanço Patrimonial.
@@ -451,6 +511,19 @@ def processar_demonstracoes_com_jev(
     # 1. Carregamento dos dados brutos (Excel ou CSV)
     dfs_por_aba = {}
     nome_lower = (nome_arquivo or '').lower()
+
+    # Mapa de referência do Plano de Contas cadastrado para triagem Balanço vs DRE
+    mapa_plano = {}
+    try:
+        for p in empresas_plano_service.obter_plano_contas_efetivo_empresa():
+            c_p = str(p.get("codigo_contabil") or "").strip()
+            c_limpo = re.sub(r"[^0-9]", "", c_p)
+            if c_p:
+                mapa_plano[c_p] = p
+            if c_limpo:
+                mapa_plano[c_limpo] = p
+    except Exception:
+        mapa_plano = {}
 
     if nome_lower.endswith('.csv'):
         df_csv = None
@@ -730,21 +803,20 @@ def processar_demonstracoes_com_jev(
             continue
 
         nome_aba_norm = _normalizar_texto(sheet_name)
-        if any(w in nome_aba_norm for w in ['dre', 'resultado']):
-            itens_dre_brutos.extend(linhas_aba)
-        elif any(w in nome_aba_norm for w in ['balanco', 'bp', 'patrimonio']):
-            contas_balanco_brutas.extend(linhas_aba)
-        else:
-            tipo = _identificar_tipo_demonstracao(linhas_aba)
-            if tipo == "DRE":
-                itens_dre_brutos.extend(linhas_aba)
+        eh_aba_dre = any(w in nome_aba_norm for w in ['dre', 'resultado', 'demonstracao do resultado'])
+
+        # Triagem rigorosa conta a conta: nenhuma conta de DRE pode vazar para o Balanço!
+        for linha in linhas_aba:
+            tipo_linha = _classificar_linha_balanco_ou_dre(linha, mapa_plano)
+            if eh_aba_dre or tipo_linha == "DRE":
+                itens_dre_brutos.append(linha)
             else:
-                contas_balanco_brutas.extend(linhas_aba)
+                contas_balanco_brutas.append(linha)
 
     somente_dre = len(itens_dre_brutos) > 0 and len(contas_balanco_brutas) == 0
     somente_balanco = len(contas_balanco_brutas) > 0 and len(itens_dre_brutos) == 0
 
-    # 3. Processamento e Classificação JEV para o Balanço
+    # 3. Processamento e Classificação JEV para o Balanço (Blindagem contra contas de resultado)
     contas_processadas = []
     for c in contas_balanco_brutas:
         s_atual = c["saldo_atual"]
@@ -757,6 +829,24 @@ def processar_demonstracoes_com_jev(
             saldo=s_atual
         )
 
+        grupo_escolhido = decisao.get("grupo_escolhido") or ""
+        cod_c = str(c.get("codigo") or "").strip()
+        cod_c_limpo = re.sub(r"[^0-9]", "", cod_c)
+
+        # SE O JEV OU O CÓDIGO IDENTIFICAR COMO DRE, TRANSFERE IMEDIATAMENTE PARA ITENS_DRE!
+        if "DRE" in grupo_escolhido.upper() or cod_c_limpo.startswith(("3", "4", "5", "6")):
+            itens_dre.append({
+                "codigo": c["codigo"],
+                "conta": c["conta"],
+                "saldo_atual": s_atual,
+                "saldo_anterior": s_ant,
+                "saldos_trimestrais": c["saldos_trimestrais"],
+                "saldos_anuais": c.get("saldos_anuais", {}),
+                "variacao_percentual": round(var_pct, 2),
+                "grupo": grupo_escolhido
+            })
+            continue
+
         contas_processadas.append({
             "codigo": c["codigo"],
             "conta": c["conta"],
@@ -767,7 +857,7 @@ def processar_demonstracoes_com_jev(
             "saldos_anuais": c.get("saldos_anuais", {}),
             "variacao_nominal": s_atual - s_ant,
             "variacao_percentual": round(var_pct, 2),
-            "grupo": decisao["grupo_escolhido"],
+            "grupo": grupo_escolhido,
             "confianca_ia": decisao["confianca_classificacao"],
             "score_relevancia": decisao["score_relevancia"],
             "probabilidade_anomalia": decisao["probabilidade_anomalia"],
@@ -804,8 +894,8 @@ def processar_demonstracoes_com_jev(
         g = _normalizar_texto(c.get("grupo", ""))
         desc = _normalizar_texto(c.get("conta", ""))
 
-        # Prioridade 1: Patrimônio Líquido (Códigos 2.03, 2.3, 2.04, 2.4, 3.x ou termos de PL)
-        if cod.startswith(("2.03", "2.3", "2.04", "2.4", "3")):
+        # Prioridade 1: Patrimônio Líquido (Códigos 2.03, 2.3, 2.04, 2.4 ou termos de PL)
+        if cod.startswith(("2.03", "2.3", "2.04", "2.4", "2.05", "2.5")):
             return "patrimonio_liquido"
         if any(w in desc for w in ['patrimonio liquido', 'capital social', 'reserva de', 'reservas de', 'lucros acumulados', 'prejuizos acumulados', 'ajuste de avaliacao']):
             return "patrimonio_liquido"

@@ -1232,7 +1232,55 @@
 
       const indExibicao = indicesBaseAno;
 
+      // Filtro Universal Geral (Busca textual)
       const contasFiltradas = (data?.contas_detalhadas || []).filter(c => {
+        const matchTexto = c.conta.toLowerCase().includes(busca.toLowerCase()) || c.codigo.includes(busca);
+        const matchGrupo = filtroGrupo === 'todos' || c.grupo.includes(filtroGrupo);
+        return matchTexto && matchGrupo;
+      });
+
+      // =========================================================================
+      // FILTRO RIGOROSO E EXCLUSIVO PARA O BALANÇO PATRIMONIAL:
+      // Jamais permite contas de DRE (Receitas, Deduções, Custos, Salários, Despesas) dentro do Balanço!
+      // =========================================================================
+      const contasBalancoFiltradas = (data?.contas_detalhadas || []).filter(c => {
+        // 1. NUNCA exibe contas cujo grupo JEV seja da DRE ou contenha Receita/Custo/Despesa
+        const grupoUpper = String(c.grupo || '').toUpperCase();
+        if (grupoUpper.includes('DRE') || grupoUpper.includes('RECEITA BRUTA') || grupoUpper.includes('DESPESAS OPERACIONAIS') || grupoUpper.includes('CUSTO')) {
+          return false;
+        }
+
+        // 2. NUNCA exibe contas com códigos clássicos de DRE (3, 4, 5, 6, 7)
+        const cod = String(c.codigo || '').trim();
+        const codLimpo = cod.replace(/\D/g, '');
+        if (codLimpo.startsWith('3') || codLimpo.startsWith('4') || codLimpo.startsWith('5') || codLimpo.startsWith('6') || codLimpo.startsWith('7')) {
+          return false;
+        }
+
+        // 3. Verificação no Plano de Contas cadastrado da empresa
+        const noPlano = planoContasLista.find(p => {
+          const pCod = String(p.codigo_contabil || '').trim();
+          return pCod === cod || pCod.replace(/\D/g, '') === codLimpo;
+        });
+        if (noPlano && (noPlano.tipo_demonstracao === 'DRE' || noPlano.demonstracao === 'DRE')) {
+          return false;
+        }
+
+        // 4. Termos inconfundíveis de DRE (sem ser provisão/a pagar)
+        const contaNorm = (c.conta || '').toLowerCase();
+        const termosDre = [
+          'vendas canceladas', 'impostos incidentes', 'icms sobre vendas', 'pis faturamento',
+          'cofins faturamento', 'iss sobre', 'lucro bruto', 'salarios e ordenados', 'salários e ordenados',
+          'gratificacoes', 'gratificações', 'ferias', 'férias', '13o', '13º', 'rescisoes', 'rescisões',
+          'hora extra', 'dsr', 'adicional noturno', 'despesas operacionais', 'despesas com vendas',
+          'despesas administrativas', 'despesas com pessoal', 'custo das mercadorias', 'cpv', 'cmv'
+        ];
+        const ehTermoDre = termosDre.some(t => contaNorm.includes(t));
+        if (ehTermoDre && !contaNorm.includes('a pagar') && !contaNorm.includes('a recolher') && !contaNorm.includes('provisao')) {
+          return false;
+        }
+
+        // 5. Filtro de texto e grupo
         const matchTexto = c.conta.toLowerCase().includes(busca.toLowerCase()) || c.codigo.includes(busca);
         const matchGrupo = filtroGrupo === 'todos' || c.grupo.includes(filtroGrupo);
         return matchTexto && matchGrupo;
@@ -1243,7 +1291,7 @@
         return l.conta.toLowerCase().includes(buscaMatriz.toLowerCase());
       });
 
-      const gruposUnicos = Array.from(new Set((data?.contas_detalhadas || []).map(c => c.grupo)));
+      const gruposUnicos = Array.from(new Set(contasBalancoFiltradas.map(c => c.grupo)));
 
       const getEstiloLinhaMatriz = (linha) => {
         const estilo = linha.estilo || '';
@@ -4118,65 +4166,99 @@
                       </select>
                     </div>
 
-                    <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
-                      <div className="overflow-x-auto">
-                        <table className="w-full text-left text-xs">
-                          <thead className="bg-slate-100 text-slate-700 font-bold uppercase tracking-wider border-b border-slate-200">
-                            <tr>
-                              <th className="py-3 px-4">Código</th>
-                              <th className="py-3 px-4 min-w-[200px]">Conta Contábil</th>
-                              <th className="py-3 px-4">Classificação JEV</th>
-                              {anoAtivo === 'todos_anos' ? (
-                                anosDisponiveis.map(ano => (
-                                  <th key={ano} className="py-3 px-4 text-right bg-cyan-50/80 text-cyan-900 font-bold">
-                                    Exercício {ano}
-                                  </th>
-                                ))
-                              ) : (
-                                <>
-                                  <th className="py-3 px-4 text-right bg-cyan-50 text-cyan-900 font-bold">Exercício {anoAtivo}</th>
-                                  <th className="py-3 px-4 text-right">Exercício Anterior</th>
-                                  <th className="py-3 px-4 text-right">Var. %</th>
-                                </>
-                              )}
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-slate-200 text-slate-800">
-                            {contasFiltradas.map((c, i) => (
-                              <tr key={i} className="hover:bg-slate-50">
-                                <td className="py-3 px-4 font-mono text-slate-500">{c.codigo}</td>
-                                <td className="py-3 px-4 font-semibold text-slate-900">{c.conta}</td>
-                                <td className="py-3 px-4">
-                                  <span className="px-2.5 py-1 rounded-full bg-slate-100 border border-slate-300 text-[11px] font-semibold text-cyan-800">
-                                    ⚡🧠 {c.grupo}
-                                  </span>
-                                </td>
+                    {contasBalancoFiltradas.length === 0 ? (
+                      <div className="bg-gradient-to-r from-amber-50 via-amber-50/60 to-orange-50 border-2 border-dashed border-amber-300/80 rounded-2xl p-8 text-center space-y-4 shadow-sm">
+                        <div className="w-14 h-14 mx-auto rounded-2xl bg-amber-100/80 flex items-center justify-center text-2xl shadow-inner border border-amber-200">
+                          🏛️
+                        </div>
+                        <div className="space-y-1.5">
+                          <h3 className="text-sm font-black text-amber-950">
+                            Nenhuma Conta Patrimonial (Ativo / Passivo) Localizada no Balanço
+                          </h3>
+                          <p className="text-xs text-amber-800 max-w-xl mx-auto leading-relaxed">
+                            As contas importadas nesta movimentação contábil pertencem à <b>DRE (Demonstração do Resultado)</b> e já estão devidamente integradas nas abas <b>Matriz DRE</b> e <b>DRE Tradicional</b>.
+                            <br/>
+                            Para visualizar o <b>Balanço Patrimonial</b>, certifique-se de que a estrutura de contas de <b>Ativo</b> e <b>Passivo</b> esteja cadastrada no <b>Plano de Contas</b> da sua empresa.
+                          </p>
+                        </div>
+                        <div className="pt-2 flex flex-wrap items-center justify-center gap-3">
+                          <button
+                            onClick={() => setActiveTab('plano_contas')}
+                            className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white text-xs font-black shadow-md shadow-indigo-500/20 transition-all cursor-pointer flex items-center gap-2"
+                          >
+                            <span>📑</span>
+                            <span>Cadastrar Plano de Contas</span>
+                          </button>
+                          <button
+                            onClick={() => setActiveTab('matriz')}
+                            className="px-4 py-2 rounded-xl bg-white hover:bg-slate-50 active:scale-95 border border-slate-300 text-slate-800 text-xs font-bold shadow-2xs transition-all cursor-pointer flex items-center gap-2"
+                          >
+                            <span>📊</span>
+                            <span>Ver Contas na Matriz DRE</span>
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-left text-xs">
+                            <thead className="bg-slate-100 text-slate-700 font-bold uppercase tracking-wider border-b border-slate-200">
+                              <tr>
+                                <th className="py-3 px-4">Código</th>
+                                <th className="py-3 px-4 min-w-[200px]">Conta Contábil</th>
+                                <th className="py-3 px-4">Classificação JEV</th>
                                 {anoAtivo === 'todos_anos' ? (
-                                  anosDisponiveis.map(ano => {
-                                    const val = (c.saldos_anuais && c.saldos_anuais[ano] !== undefined)
-                                      ? c.saldos_anuais[ano]
-                                      : (ano === anosDisponiveis[0] ? c.saldo_atual : c.saldo_anterior);
-                                    return (
-                                      <td key={ano} className="py-3 px-4 text-right font-mono font-medium text-slate-900 bg-cyan-50/20">
-                                        {formatarMoeda(val)}
-                                      </td>
-                                    );
-                                  })
+                                  anosDisponiveis.map(ano => (
+                                    <th key={ano} className="py-3 px-4 text-right bg-cyan-50/80 text-cyan-900 font-bold">
+                                      Exercício {ano}
+                                    </th>
+                                  ))
                                 ) : (
                                   <>
-                                    <td className="py-3 px-4 text-right font-bold text-slate-900 bg-cyan-50/50 font-mono">
-                                      {formatarMoeda(c.saldos_anuais && c.saldos_anuais[anoAtivo] !== undefined ? c.saldos_anuais[anoAtivo] : c.saldo_atual)}
-                                    </td>
-                                    <td className="py-3 px-4 text-right text-slate-600 font-mono">{formatarMoeda(c.saldo_anterior)}</td>
-                                    <td className="py-3 px-4 text-right font-bold text-emerald-600">{c.variacao_percentual}%</td>
+                                    <th className="py-3 px-4 text-right bg-cyan-50 text-cyan-900 font-bold">Exercício {anoAtivo}</th>
+                                    <th className="py-3 px-4 text-right">Exercício Anterior</th>
+                                    <th className="py-3 px-4 text-right">Var. %</th>
                                   </>
                                 )}
                               </tr>
-                            ))}
-                          </tbody>
-                        </table>
+                            </thead>
+                            <tbody className="divide-y divide-slate-200 text-slate-800">
+                              {contasBalancoFiltradas.map((c, i) => (
+                                <tr key={i} className="hover:bg-slate-50">
+                                  <td className="py-3 px-4 font-mono text-slate-500">{c.codigo}</td>
+                                  <td className="py-3 px-4 font-semibold text-slate-900">{c.conta}</td>
+                                  <td className="py-3 px-4">
+                                    <span className="px-2.5 py-1 rounded-full bg-slate-100 border border-slate-300 text-[11px] font-semibold text-cyan-800">
+                                      ⚡🧠 {c.grupo}
+                                    </span>
+                                  </td>
+                                  {anoAtivo === 'todos_anos' ? (
+                                    anosDisponiveis.map(ano => {
+                                      const val = (c.saldos_anuais && c.saldos_anuais[ano] !== undefined)
+                                        ? c.saldos_anuais[ano]
+                                        : (ano === anosDisponiveis[0] ? c.saldo_atual : c.saldo_anterior);
+                                      return (
+                                        <td key={ano} className="py-3 px-4 text-right font-mono font-medium text-slate-900 bg-cyan-50/20">
+                                          {formatarMoeda(val)}
+                                        </td>
+                                      );
+                                    })
+                                  ) : (
+                                    <>
+                                      <td className="py-3 px-4 text-right font-bold text-slate-900 bg-cyan-50/50 font-mono">
+                                        {formatarMoeda(c.saldos_anuais && c.saldos_anuais[anoAtivo] !== undefined ? c.saldos_anuais[anoAtivo] : c.saldo_atual)}
+                                      </td>
+                                      <td className="py-3 px-4 text-right text-slate-600 font-mono">{formatarMoeda(c.saldo_anterior)}</td>
+                                      <td className="py-3 px-4 text-right font-bold text-emerald-600">{c.variacao_percentual}%</td>
+                                    </>
+                                  )}
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
                       </div>
-                    </div>
+                    )}
                   </div>
                 )}
 
