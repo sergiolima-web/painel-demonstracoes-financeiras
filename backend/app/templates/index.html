@@ -2281,16 +2281,30 @@
                           <span className="font-mono font-black text-amber-950 bg-amber-200/80 px-1.5 py-0.5 rounded text-[11px]">{mascaraPlano}</span>
                         </button>
 
-                        {/* Botão de Importar Planilha/PDF */}
+                        {/* Input Oculto e Botão Direto de Importar Planilha/PDF (Sem nenhum card na tela!) */}
+                        <input
+                          type="file"
+                          id="input-importar-estrutura-direto"
+                          accept=".xlsx,.xls,.csv,.pdf"
+                          className="hidden"
+                          onChange={e => {
+                            if (e.target.files && e.target.files[0]) {
+                              handleImportarEstruturaContas(e.target.files[0]);
+                              e.target.value = '';
+                            }
+                          }}
+                        />
                         <button
                           type="button"
-                          onClick={() => setGavetaImportacaoAberta(!gavetaImportacaoAberta)}
+                          onClick={() => {
+                            const inp = document.getElementById('input-importar-estrutura-direto');
+                            if (inp) inp.click();
+                          }}
                           className="px-3 py-1.5 rounded-lg bg-white hover:bg-indigo-50 text-indigo-900 border border-indigo-200 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer"
-                          title="Abrir importação de planilha ou PDF"
+                          title="Importar estrutura do Plano de Contas via Planilha Excel ou PDF"
                         >
                           <span>📥</span>
                           <span>Importar Planilha/PDF</span>
-                          <span className="text-[10px] text-indigo-600 font-normal">{gavetaImportacaoAberta ? '▲' : '▼'}</span>
                         </button>
 
                         {/* Botão de Limpar Plano */}
@@ -2353,59 +2367,12 @@
                       </div>
                     )}
 
-                    {/* GAVETA RECOLHÍVEL DE IMPORTAÇÃO DE ARQUIVO (PLANILHA EXCEL / PDF) */}
-                    {gavetaImportacaoAberta && (
-                      <div className="bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 border border-indigo-500/40 rounded-xl p-4 shadow-lg text-white space-y-3 animate-fadeIn">
-                        <div className="flex items-center justify-between border-b border-slate-800 pb-2">
-                          <div className="flex items-center gap-2">
-                            <span className="text-base">📥</span>
-                            <h3 className="text-xs font-extrabold text-white">Importador Inteligente de Estrutura (Plano de Contas & DRE)</h3>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => setGavetaImportacaoAberta(false)}
-                            className="text-xs text-indigo-300 hover:text-white font-bold"
-                          >
-                            ✕ Fechar Gaveta
-                          </button>
-                        </div>
-
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 items-center">
-                          <div className="space-y-1">
-                            <p className="text-xs text-slate-300">
-                              Arraste ou selecione uma planilha Excel (<code className="font-mono text-indigo-300">.xlsx, .xls</code>) ou <code className="font-mono text-indigo-300">.pdf</code> com a listagem de contas.
-                            </p>
-                            <p className="text-[11px] text-slate-400">
-                              O sistema higieniza cabeçalhos e ruídos e cadastra as contas automaticamente segundo a máscara ativa (<code className="font-mono text-amber-300">{mascaraPlano}</code>).
-                            </p>
-                          </div>
-
-                          <div className="flex items-center justify-end gap-2">
-                            <label className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-black shadow-md cursor-pointer transition-all inline-flex items-center gap-2">
-                              <span>📁 Escolher Arquivo para Importar</span>
-                              <input
-                                type="file"
-                                accept=".xlsx,.xls,.csv,.pdf"
-                                className="hidden"
-                                onChange={e => {
-                                  if (e.target.files && e.target.files[0]) {
-                                    handleImportarEstruturaContas(e.target.files[0]);
-                                    e.target.value = '';
-                                  }
-                                }}
-                              />
-                            </label>
-                          </div>
-                        </div>
-
-                        {resultadoEstrutura && (
-                          <div className="bg-emerald-950/70 border border-emerald-500/40 rounded-lg p-3 text-xs flex items-center justify-between text-emerald-200">
-                            <span>
-                              ✅ Importadas <strong>{resultadoEstrutura.total_contas_importadas}</strong> contas (<strong>{resultadoEstrutura.contas_dre_importadas} DRE</strong> e <strong>{resultadoEstrutura.contas_balanco_importadas} Balanço</strong>).
-                            </span>
-                            <button onClick={() => setResultadoEstrutura(null)} className="text-emerald-300 hover:text-white font-bold">✕</button>
-                          </div>
-                        )}
+                    {resultadoEstrutura && (
+                      <div className="bg-emerald-900 border border-emerald-500 rounded-xl p-3 text-xs flex items-center justify-between text-white shadow-sm animate-fadeIn">
+                        <span>
+                          ✅ Estrutura importada com sucesso: <strong>{resultadoEstrutura.total_contas_importadas}</strong> contas cadastradas (<strong>{resultadoEstrutura.contas_dre_importadas} DRE</strong> e <strong>{resultadoEstrutura.contas_balanco_importadas} Balanço</strong>).
+                        </span>
+                        <button onClick={() => setResultadoEstrutura(null)} className="text-emerald-200 hover:text-white font-bold ml-2">✕</button>
                       </div>
                     )}
 
