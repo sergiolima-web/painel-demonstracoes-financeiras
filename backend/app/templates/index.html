@@ -1085,10 +1085,13 @@
       return (
         <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col font-sans relative">
 
-          {/* JANELA MODAL FLUTUANTE: TROCAR EMPRESA E ANO (Abre em cima da página ativa) */}
+          {/* JANELA MODAL FLUTUANTE: TROCAR EMPRESA E ANO (Fundo 100% nítido sem desfoque/blur) */}
           {portalAcessoAberto && (
-            <div className="fixed inset-0 z-[9990] flex items-center justify-center bg-slate-950/65 backdrop-blur-sm p-4 animate-in fade-in duration-150">
-              <div className="max-w-lg w-full bg-white border border-slate-200 rounded-3xl p-6 sm:p-7 shadow-2xl space-y-5 text-slate-900 relative animate-in zoom-in-95 duration-150">
+            <div
+              onClick={(e) => { if (e.target === e.currentTarget) setPortalAcessoAberto(false); }}
+              className="fixed inset-0 z-[9990] flex items-center justify-center bg-black/20 p-4 animate-in fade-in duration-150"
+            >
+              <div className="max-w-lg w-full bg-white border border-slate-300/80 rounded-3xl p-6 sm:p-7 shadow-[0_25px_60px_-15px_rgba(0,0,0,0.35)] ring-1 ring-slate-900/10 space-y-5 text-slate-900 relative animate-in zoom-in-95 duration-150">
                 
                 {/* Botão de Fechar no Canto Superior Direito */}
                 <button
