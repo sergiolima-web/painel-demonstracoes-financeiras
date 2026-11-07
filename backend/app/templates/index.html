@@ -472,6 +472,134 @@
       const [novaContaPropagar, setNovaContaPropagar] = React.useState(true);
       const [buscaPlanoContas, setBuscaPlanoContas] = React.useState('');
 
+      // Estados da Máscara do Plano de Contas (#.#.#.##.###) e Cadastro Rápido contínuo via TAB
+      const [mascaraPlano, setMascaraPlano] = React.useState('#.#.#.##.###');
+      const [modalMascaraAberto, setModalMascaraAberto] = React.useState(false);
+      const [mascaraTempInput, setMascaraTempInput] = React.useState('#.#.#.##.###');
+      const [gavetaImportacaoAberta, setGavetaImportacaoAberta] = React.useState(false);
+
+      // Linha de Digitação Rápida Contínua (TAB -> TAB -> TAB -> ENTER / Nova Linha Automática)
+      const [linhaRapidaConta, setLinhaRapidaConta] = React.useState('');
+      const [linhaRapidaReduzido, setLinhaRapidaReduzido] = React.useState('');
+      const [linhaRapidaNome, setLinhaRapidaNome] = React.useState('');
+      const [linhaRapidaDemonstracao, setLinhaRapidaDemonstracao] = React.useState('DRE');
+      const [linhaRapidaDestino, setLinhaRapidaDestino] = React.useState('vendas_mercadorias');
+      const [linhaRapidaRef, setLinhaRapidaRef] = React.useState('S');
+      const [salvandoLinhaRapida, setSalvandoLinhaRapida] = React.useState(false);
+
+      const refInputConta = React.useRef(null);
+      const refInputReduzido = React.useRef(null);
+      const refInputNome = React.useRef(null);
+
+      const handleSalvarMascara = async (novaMasc) => {
+        const masc = (novaMasc || mascaraTempInput || '#.#.#.##.###').trim();
+        setMascaraPlano(masc);
+        setModalMascaraAberto(false);
+        try {
+          const tokenSalvo = sessionStorage.getItem('painel_access_token') || '';
+          await fetch('/api/plano-contas/mascara', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Access-Token': tokenSalvo
+            },
+            body: JSON.stringify({ mascara: masc })
+          });
+          setMsgEmpresaPlano(`✅ Máscara do Plano de Contas configurada para '${masc}'!`);
+          setTimeout(() => setMsgEmpresaPlano(''), 4000);
+        } catch (e) {
+          console.error(e);
+        }
+      };
+
+      const handleGravarLinhaRapida = async () => {
+        if (!linhaRapidaConta.trim() || !linhaRapidaNome.trim() || salvandoLinhaRapida) return;
+        setSalvandoLinhaRapida(true);
+
+        const partesMasc = (mascaraPlano || '#.#.#.##.###').split('.').length;
+        const partesConta = linhaRapidaConta.trim().split('.').length;
+        const refAuto = linhaRapidaRef || (partesConta >= partesMasc ? 'S' : '');
+        const codReduzidoAuto = linhaRapidaReduzido.trim() || String(planoContasLista.length + 1).padStart(6, '0');
+
+        const payload = {
+          codigo_contabil: linhaRapidaConta.trim(),
+          codigo_reduzido: codReduzidoAuto,
+          ref: refAuto,
+          nome_conta: linhaRapidaNome.trim(),
+          demonstracao: linhaRapidaDemonstracao,
+          tipo_demonstracao: linhaRapidaDemonstracao,
+          conta_destino_matriz_id: linhaRapidaDestino,
+          conta_destino_matriz_nome: linhaRapidaDestino,
+          escopo: 'MATRIZ',
+          empresa_id: 'MATRIZ_GLOBAL',
+          propagar_filiais: true
+        };
+
+        try {
+          const tokenSalvo = sessionStorage.getItem('painel_access_token') || '';
+          const res = await fetch('/api/plano-contas', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Access-Token': tokenSalvo
+            },
+            body: JSON.stringify(payload)
+          });
+          const json = await res.json();
+          if (json.plano_contas) setPlanoContasLista(json.plano_contas);
+          if (json.prontidao_importacao) setProntidaoImportacao(json.prontidao_importacao);
+
+          // Limpa campos para a próxima digitação
+          setLinhaRapidaConta('');
+          setLinhaRapidaReduzido('');
+          setLinhaRapidaNome('');
+          setLinhaRapidaRef('S');
+
+          // Pula o cursor de volta para a primeira coluna (Conta) da nova linha
+          setTimeout(() => {
+            if (refInputConta.current) {
+              refInputConta.current.focus();
+            }
+          }, 50);
+        } catch (err) {
+          console.error(err);
+        } finally {
+          setSalvandoLinhaRapida(false);
+        }
+      };
+
+      const handleKeyDownConta = (e) => {
+        if (e.key === 'Tab' || e.key === 'Enter') {
+          if (!linhaRapidaReduzido) {
+            const proxRed = String(planoContasLista.length + 1).padStart(6, '0');
+            setLinhaRapidaReduzido(proxRed);
+          }
+          const partesMasc = (mascaraPlano || '#.#.#.##.###').split('.').length;
+          const partesConta = (linhaRapidaConta || '').trim().split('.').length;
+          setLinhaRapidaRef(partesConta >= partesMasc ? 'S' : '');
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            if (refInputReduzido.current) refInputReduzido.current.focus();
+          }
+        }
+      };
+
+      const handleKeyDownReduzido = (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          if (refInputNome.current) refInputNome.current.focus();
+        }
+      };
+
+      const handleKeyDownNome = (e) => {
+        if (e.key === 'Tab' || e.key === 'Enter') {
+          if (linhaRapidaConta.trim() && linhaRapidaNome.trim()) {
+            e.preventDefault();
+            handleGravarLinhaRapida();
+          }
+        }
+      };
+
       const carregarRegrasDePara = async () => {
         try {
           const tokenSalvo = sessionStorage.getItem('painel_access_token') || '';
@@ -494,6 +622,10 @@
           const json = await res.json();
           if (json.empresas) setEmpresasLista(json.empresas);
           if (json.plano_contas) setPlanoContasLista(json.plano_contas);
+          if (json.mascara_plano) {
+            setMascaraPlano(json.mascara_plano);
+            setMascaraTempInput(json.mascara_plano);
+          }
           if (json.prontidao_importacao) setProntidaoImportacao(json.prontidao_importacao);
         } catch (e) {
           console.error("Erro ao carregar empresas e plano de contas", e);
@@ -1973,433 +2105,593 @@
                   </div>
                 )}
 
-                {/* Conteúdo da Aba 2: Plano de Contas (Exclusivo e Separado) */}
+                {/* Conteúdo da Aba 2: Plano de Contas (Exclusivo, Grid Contábil de Alta Velocidade & Máscara) */}
                 {activeTab === 'plano_contas' && (
-                  <div className="space-y-4">
-                    {/* Header Compacto e Clean (1,5 cm) */}
-                    <div className="bg-gradient-to-r from-slate-900 via-emerald-950 to-slate-900 border border-emerald-500/30 rounded-xl px-4 py-2.5 shadow-sm flex items-center justify-between gap-3 text-white">
-                      <div className="flex items-center gap-2.5 min-w-0">
-                        <span className="text-sm">📑</span>
-                        <h2 className="text-xs font-black text-white truncate">
-                          Plano de Contas Corporativo
-                        </h2>
-                        <span className="hidden sm:inline-block text-[11px] text-emerald-300/80 truncate">
-                          • Estrutura de Contas Enxuta, DRE e Balanço Patrimonial
-                        </span>
-                      </div>
+                  <div className="space-y-3">
+                    {/* MODAL DE CONFIGURAÇÃO DA MÁSCARA CONTÁBIL (SEM RELEVO PESADO, BEM NÍTIDO) */}
+                    {modalMascaraAberto && (
+                      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-none animate-fadeIn">
+                        <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full border border-slate-300 p-6 space-y-4">
+                          <div className="flex items-center justify-between border-b border-slate-200 pb-3">
+                            <div className="flex items-center gap-2">
+                              <span className="text-xl">🔢</span>
+                              <div>
+                                <h3 className="text-base font-extrabold text-slate-900">Configuração da Máscara do Plano de Contas</h3>
+                                <p className="text-xs text-slate-500">Defina a estrutura hierárquica e total de dígitos numéricos</p>
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => setModalMascaraAberto(false)}
+                              className="text-slate-400 hover:text-slate-700 text-lg font-bold p-1"
+                            >
+                              ✕
+                            </button>
+                          </div>
 
-                      <div className="flex items-center gap-2 shrink-0">
-                        <span className="px-2.5 py-0.5 rounded-lg bg-emerald-900/60 border border-emerald-500/40 text-[11px] font-bold text-emerald-300">
-                          {planoContasLista.length} contas cadastradas
-                        </span>
+                          <div className="space-y-2 text-xs text-slate-600 bg-slate-50 p-3 rounded-xl border border-slate-200">
+                            <p>
+                              <strong>Como funciona a máscara?</strong> Cada cerquilha (<code className="font-mono bg-white px-1 border rounded">#</code>) representa uma casa numérica. Os pontos separam os níveis contábeis.
+                            </p>
+                            <p>
+                              Exemplo: <code className="font-mono font-bold text-indigo-700">#.#.#.##.###</code> define 5 níveis. As contas do 5º nível tornam-se <strong>Analíticas (Ref. S)</strong>, enquanto os níveis 1, 2, 3 e 4 são <strong>Sintéticas</strong> de agrupamento.
+                            </p>
+                          </div>
+
+                          <div className="space-y-1.5">
+                            <label className="block text-xs font-bold text-slate-800">
+                              Máscara Contábil:
+                            </label>
+                            <input
+                              type="text"
+                              value={mascaraTempInput}
+                              onChange={e => setMascaraTempInput(e.target.value)}
+                              placeholder="Ex: #.#.#.##.###"
+                              className="w-full px-4 py-2.5 font-mono text-base font-black bg-slate-50 border-2 border-indigo-400 rounded-xl focus:outline-none focus:border-indigo-600 focus:bg-white text-indigo-950 shadow-inner"
+                            />
+                          </div>
+
+                          <div className="space-y-1.5">
+                            <label className="block text-[11px] font-bold text-slate-600">
+                              Modelos Prontos de Máscara (Clique para aplicar):
+                            </label>
+                            <div className="grid grid-cols-2 gap-2">
+                              <button
+                                type="button"
+                                onClick={() => setMascaraTempInput('#.#.#.##.###')}
+                                className="px-3 py-1.5 rounded-lg border border-slate-300 hover:border-indigo-500 bg-slate-50 hover:bg-indigo-50 text-left font-mono text-xs font-bold text-slate-800 transition-all"
+                              >
+                                #.#.#.##.### <span className="block text-[10px] font-normal text-slate-500">Padrão 5 níveis (Domínio/Fortes)</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setMascaraTempInput('#.#.##.###.####')}
+                                className="px-3 py-1.5 rounded-lg border border-slate-300 hover:border-indigo-500 bg-slate-50 hover:bg-indigo-50 text-left font-mono text-xs font-bold text-slate-800 transition-all"
+                              >
+                                #.#.##.###.#### <span className="block text-[10px] font-normal text-slate-500">5 níveis com subcontas</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setMascaraTempInput('#.##.##.###.####')}
+                                className="px-3 py-1.5 rounded-lg border border-slate-300 hover:border-indigo-500 bg-slate-50 hover:bg-indigo-50 text-left font-mono text-xs font-bold text-slate-800 transition-all"
+                              >
+                                #.##.##.###.#### <span className="block text-[10px] font-normal text-slate-500">5 níveis corporativo</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setMascaraTempInput('#.#.#.#.##.###')}
+                                className="px-3 py-1.5 rounded-lg border border-slate-300 hover:border-indigo-500 bg-slate-50 hover:bg-indigo-50 text-left font-mono text-xs font-bold text-slate-800 transition-all"
+                              >
+                                #.#.#.#.##.### <span className="block text-[10px] font-normal text-slate-500">6 níveis detalhado</span>
+                              </button>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-200">
+                            <button
+                              type="button"
+                              onClick={() => setModalMascaraAberto(false)}
+                              className="px-4 py-2 rounded-xl border border-slate-300 text-xs font-bold text-slate-700 hover:bg-slate-100 transition-all"
+                            >
+                              Cancelar
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleSalvarMascara(mascaraTempInput)}
+                              className="px-5 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 text-white text-xs font-black shadow-md shadow-indigo-500/20 transition-all cursor-pointer"
+                            >
+                              💾 Gravar Máscara
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* BARRA DE FERRAMENTAS RIBBON CONTÁBIL COMPACTA (ESTILO FORTE / DOMÍNIO) */}
+                    <div className="bg-slate-100 border border-slate-300 rounded-xl p-2 shadow-sm flex flex-wrap items-center justify-between gap-2 text-slate-800">
+                      {/* Grupo de Ações Contábeis Rápidas */}
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (refInputConta.current) {
+                              refInputConta.current.focus();
+                              refInputConta.current.select();
+                            }
+                          }}
+                          className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-black shadow-sm flex items-center gap-1.5 transition-all cursor-pointer"
+                          title="Focar na linha de digitação contínua"
+                        >
+                          <span>➕</span>
+                          <span>Criar Linha</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={handleGravarLinhaRapida}
+                          disabled={salvandoLinhaRapida || !linhaRapidaConta.trim() || !linhaRapidaNome.trim()}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+                            linhaRapidaConta.trim() && linhaRapidaNome.trim()
+                              ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm'
+                              : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                          }`}
+                          title="Salvar conta digitada na linha rápida"
+                        >
+                          <span>💾</span>
+                          <span>{salvandoLinhaRapida ? 'Gravando...' : 'Gravar'}</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setLinhaRapidaConta('');
+                            setLinhaRapidaReduzido('');
+                            setLinhaRapidaNome('');
+                            setLinhaRapidaRef('S');
+                          }}
+                          className="px-2.5 py-1.5 rounded-lg bg-white hover:bg-slate-200 text-slate-700 border border-slate-300 text-xs font-bold transition-all cursor-pointer"
+                          title="Limpar campos da linha rápida"
+                        >
+                          <span>❌</span>
+                          <span>Cancelar</span>
+                        </button>
+
+                        <div className="h-5 w-px bg-slate-300 mx-1 hidden sm:block"></div>
+
+                        {/* Botão de Configuração da Máscara */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setMascaraTempInput(mascaraPlano);
+                            setModalMascaraAberto(true);
+                          }}
+                          className="px-3 py-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer"
+                          title="Configurar máscara contábil (#.#.#.##.###)"
+                        >
+                          <span>123</span>
+                          <span>Máscara:</span>
+                          <span className="font-mono font-black text-amber-950 bg-amber-200/80 px-1.5 py-0.5 rounded text-[11px]">{mascaraPlano}</span>
+                        </button>
+
+                        {/* Botão de Importar Planilha/PDF */}
+                        <button
+                          type="button"
+                          onClick={() => setGavetaImportacaoAberta(!gavetaImportacaoAberta)}
+                          className="px-3 py-1.5 rounded-lg bg-white hover:bg-indigo-50 text-indigo-900 border border-indigo-200 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer"
+                          title="Abrir importação de planilha ou PDF"
+                        >
+                          <span>📥</span>
+                          <span>Importar Planilha/PDF</span>
+                          <span className="text-[10px] text-indigo-600 font-normal">{gavetaImportacaoAberta ? '▲' : '▼'}</span>
+                        </button>
+
+                        {/* Botão de Limpar Plano */}
                         <button
                           type="button"
                           onClick={handleLimparPlanoContas}
-                          className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-rose-900/70 text-rose-300 border border-rose-500/30 text-[11px] font-bold transition-all flex items-center gap-1 cursor-pointer"
-                          title="Zerar todas as contas do Plano de Contas"
+                          className="px-2.5 py-1.5 rounded-lg bg-white hover:bg-rose-50 text-rose-700 border border-rose-200 text-xs font-bold flex items-center gap-1 transition-all cursor-pointer"
+                          title="Limpar todas as contas cadastradas"
                         >
                           <span>🗑️</span>
                           <span className="hidden md:inline">Limpar Plano</span>
                         </button>
                       </div>
+
+                      {/* Grupo de Filtros e Busca à Direita */}
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {/* Seletor de Escopo de Empresa */}
+                        <div className="flex items-center gap-1">
+                          <span className="text-[11px] font-bold text-slate-600">Empresa:</span>
+                          <select
+                            value={empresaSelecionadaFiltro}
+                            onChange={e => setEmpresaSelecionadaFiltro(e.target.value)}
+                            className="px-2.5 py-1 bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-800 focus:outline-none focus:border-indigo-500"
+                          >
+                            <option value="CONSOLIDADO">🌐 Todas as Empresas</option>
+                            {empresasLista.map(emp => (
+                              <option key={emp.id} value={emp.id}>
+                                {emp.tipo === 'MATRIZ' ? '🏛️ ' : '🏬 '}{emp.nome_fantasia || emp.razao_social}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        {/* Campo de Busca Rápida */}
+                        <div className="relative">
+                          <input
+                            type="text"
+                            placeholder="🔍 Buscar conta ou código..."
+                            value={buscaPlanoContas}
+                            onChange={e => setBuscaPlanoContas(e.target.value)}
+                            className="w-48 sm:w-60 px-2.5 py-1 bg-white border border-slate-300 rounded-lg text-xs text-slate-900 focus:outline-none focus:border-indigo-500 placeholder-slate-400"
+                          />
+                          {buscaPlanoContas && (
+                            <button
+                              type="button"
+                              onClick={() => setBuscaPlanoContas('')}
+                              className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs font-bold"
+                            >
+                              ✕
+                            </button>
+                          )}
+                        </div>
+                      </div>
                     </div>
 
                     {msgEmpresaPlano && (
-                      <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-300 text-emerald-900 text-xs font-bold flex items-center justify-between shadow-sm">
+                      <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-300 text-emerald-900 text-xs font-bold flex items-center justify-between shadow-sm animate-fadeIn">
                         <span>{msgEmpresaPlano}</span>
                         <button onClick={() => setMsgEmpresaPlano('')} className="text-emerald-700 hover:text-emerald-950 font-black">✕</button>
                       </div>
                     )}
 
-                    {/* SEÇÃO 1: Importador Inteligente de Estrutura Enxuta (Plano de Contas ou DRE) */}
-                    <div className="bg-gradient-to-br from-emerald-950 via-slate-900 to-indigo-950 border border-emerald-500/40 rounded-2xl p-6 shadow-xl text-white space-y-5">
-                      <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 border-b border-slate-800 pb-4">
-                        <div className="space-y-1.5 max-w-3xl">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className={`px-3 py-1 rounded-full text-[11px] font-black uppercase tracking-wider border ${
-                              prontidaoImportacao?.liberado
-                                ? 'bg-emerald-500/20 text-emerald-300 border-emerald-400/50'
-                                : 'bg-rose-500/25 text-rose-300 border-rose-400/60 animate-pulse'
-                            }`}>
-                              {prontidaoImportacao?.liberado
-                                ? `✅ IMPORTAÇÃO DE SALDOS LIBERADA (${planoContasLista.length} CONTAS CADASTRADAS)`
-                                : '🔒 IMPORTAÇÃO DE SALDOS BLOQUEADA — CADASTRE O PLANO DE CONTAS E A DRE PRIMEIRO'}
-                            </span>
-                            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-400/40">
-                              🧹 Higienização Enxuta + Detecção Automática de Peça Contábil
-                            </span>
+                    {/* GAVETA RECOLHÍVEL DE IMPORTAÇÃO DE ARQUIVO (PLANILHA EXCEL / PDF) */}
+                    {gavetaImportacaoAberta && (
+                      <div className="bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 border border-indigo-500/40 rounded-xl p-4 shadow-lg text-white space-y-3 animate-fadeIn">
+                        <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                          <div className="flex items-center gap-2">
+                            <span className="text-base">📥</span>
+                            <h3 className="text-xs font-extrabold text-white">Importador Inteligente de Estrutura (Plano de Contas & DRE)</h3>
                           </div>
-                          <h3 className="text-base sm:text-lg font-extrabold text-white flex items-center gap-2">
-                            <span>📥</span>
-                            <span>Importar & Cadastrar Estrutura Enxuta de Contas (Plano de Contas ou DRE)</span>
-                          </h3>
-                          <p className="text-xs text-slate-300 leading-relaxed">
-                            Importe qualquer planilha (<strong>.xlsx, .xls, .csv</strong>) ou <strong>.pdf</strong> contendo seu <strong>Plano de Contas</strong> ou <strong>DRE</strong>. O sistema <strong>identifica sozinho qual peça contábil está sendo importada</strong>, limpa todos os valores numéricos, saldos, datas e ruídos para deixar a estrutura <strong>100% enxuta</strong>, cadastra na <strong>Matriz</strong> e propaga automaticamente para todas as <strong>Filiais</strong>!
-                          </p>
-                        </div>
-
-                        <div className="flex flex-wrap items-center gap-2.5 shrink-0">
-                          <input
-                            type="file"
-                            ref={estruturaInputRef}
-                            accept=".xlsx,.xls,.csv,.pdf"
-                            onChange={(e) => {
-                              if (e.target.files && e.target.files[0]) {
-                                handleImportarEstruturaContas(e.target.files[0]);
-                                e.target.value = '';
-                              }
-                            }}
-                            className="hidden"
-                          />
                           <button
                             type="button"
-                            disabled={importandoEstrutura}
-                            onClick={() => estruturaInputRef.current && estruturaInputRef.current.click()}
-                            className="px-5 py-3 rounded-2xl bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-500 hover:brightness-110 active:scale-95 text-slate-950 text-xs font-black shadow-lg shadow-emerald-500/30 transition-all flex items-center gap-2 cursor-pointer"
+                            onClick={() => setGavetaImportacaoAberta(false)}
+                            className="text-xs text-indigo-300 hover:text-white font-bold"
                           >
-                            <span>📥</span>
-                            <span>{importandoEstrutura ? 'Limpando & Identificando Peça...' : 'Importar Planilha de Contas / DRE (Deixar Enxuta)'}</span>
+                            ✕ Fechar Gaveta
                           </button>
                         </div>
-                      </div>
 
-                      {/* Controles de Detecção da Peça Contábil e Modo Enxuto */}
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 bg-slate-950/60 border border-slate-800 rounded-xl p-4">
-                        <div>
-                          <label className="block text-[11px] font-bold text-emerald-300 uppercase mb-1">
-                            🔍 Identificação da Peça Contábil:
-                          </label>
-                          <select
-                            value={tipoPecaEstrutura}
-                            onChange={e => setTipoPecaEstrutura(e.target.value)}
-                            className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs font-bold text-white focus:outline-none focus:border-emerald-400"
-                          >
-                            <option value="AUTO">🤖 Automático (Detecta Plano de Contas vs DRE vs Balanço)</option>
-                            <option value="PLANO_DE_CONTAS">📚 Forçar como Plano de Contas Completo</option>
-                            <option value="DRE">📈 Forçar como Estrutura de DRE (Resultado)</option>
-                            <option value="BALANCO">⚖️ Forçar como Estrutura de Balanço Patrimonial</option>
-                          </select>
-                        </div>
-
-                        <div className="flex items-center">
-                          <label className="flex items-start gap-2.5 cursor-pointer select-none">
-                            <input
-                              type="checkbox"
-                              checked={limparAnteriorEstrutura}
-                              onChange={e => setLimparAnteriorEstrutura(e.target.checked)}
-                              className="mt-0.5 h-4 w-4 rounded accent-emerald-500 cursor-pointer"
-                            />
-                            <div>
-                              <span className="text-xs font-bold text-white block">
-                                Substituir contas anteriores ao importar (Deixar 100% Enxuto)
-                              </span>
-                              <span className="text-[11px] text-slate-400 block">
-                                Remove contas antigas e mantém apenas as contas limpas da planilha importada.
-                              </span>
-                            </div>
-                          </label>
-                        </div>
-
-                        <div className="flex flex-col justify-center bg-slate-900/90 border border-slate-800 rounded-xl px-3.5 py-2 text-[11px]">
-                          <div className="flex items-center justify-between text-slate-300">
-                            <span>Status da Restrição:</span>
-                            <strong className={prontidaoImportacao?.liberado ? 'text-emerald-400' : 'text-rose-400'}>
-                              {prontidaoImportacao?.liberado ? 'Liberado p/ Importar Saldos' : 'Restrito (Sem Cadastro)'}
-                            </strong>
-                          </div>
-                          <div className="flex items-center justify-between text-slate-400 mt-1">
-                            <span>Contas DRE / Total:</span>
-                            <span className="font-mono font-bold text-white">
-                              {prontidaoImportacao?.contas_dre ?? planoContasLista.filter(c => c.demonstracao === 'DRE').length} DRE / {planoContasLista.length} Total
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Card de Resultado da Última Importação Enxuta */}
-                      {resultadoEstrutura && (
-                        <div className="bg-emerald-950/70 border border-emerald-500/40 rounded-xl p-4 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 items-center">
                           <div className="space-y-1">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <span className="px-2.5 py-0.5 rounded-md bg-emerald-400 text-slate-950 text-[11px] font-black uppercase">
-                                Peça Reconhecida: {resultadoEstrutura.rotulo_peca || resultadoEstrutura.peca_contabil_detectada}
-                              </span>
-                              <span className="text-xs font-bold text-emerald-200">
-                                Arquivo: {resultadoEstrutura.arquivo}
-                              </span>
-                            </div>
-                            <p className="text-xs text-slate-200">
-                              Foram higienizadas e cadastradas <strong>{resultadoEstrutura.total_contas_importadas}</strong> contas enxutas (<strong>{resultadoEstrutura.contas_dre_importadas} de DRE</strong> e <strong>{resultadoEstrutura.contas_balanco_importadas} de Balanço</strong>), descartando <strong>{resultadoEstrutura.linhas_ruido_descartadas}</strong> linhas de saldos/cabeçalhos/ruídos.
+                            <p className="text-xs text-slate-300">
+                              Arraste ou selecione uma planilha Excel (<code className="font-mono text-indigo-300">.xlsx, .xls</code>) ou <code className="font-mono text-indigo-300">.pdf</code> com a listagem de contas.
+                            </p>
+                            <p className="text-[11px] text-slate-400">
+                              O sistema higieniza cabeçalhos e ruídos e cadastra as contas automaticamente segundo a máscara ativa (<code className="font-mono text-amber-300">{mascaraPlano}</code>).
                             </p>
                           </div>
-                          <button
-                            type="button"
-                            onClick={() => setResultadoEstrutura(null)}
-                            className="text-xs text-emerald-300 hover:text-white font-bold shrink-0"
-                          >
-                            ✕ Fechar Resumo
-                          </button>
-                        </div>
-                      )}
-                    </div>
 
-                    {/* SEÇÃO 2: Plano de Contas Multi-Empresas (Formulário e Tabela de Contas) */}
-                    <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-5">
-                      <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 border-b border-slate-200 pb-4">
-                        <div>
-                          <h3 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
-                            <span>📚</span>
-                            <span>Cadastrar Nova Conta no Plano & Propagação Matriz ➔ Filiais</span>
-                          </h3>
-                          <p className="text-xs text-slate-500 mt-0.5">
-                            Ao cadastrar uma conta na <strong>Matriz</strong>, ela passa a valer automaticamente para todas as Filiais.
-                          </p>
+                          <div className="flex items-center justify-end gap-2">
+                            <label className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-black shadow-md cursor-pointer transition-all inline-flex items-center gap-2">
+                              <span>📁 Escolher Arquivo para Importar</span>
+                              <input
+                                type="file"
+                                accept=".xlsx,.xls,.csv,.pdf"
+                                className="hidden"
+                                onChange={e => {
+                                  if (e.target.files && e.target.files[0]) {
+                                    handleImportarEstruturaContas(e.target.files[0]);
+                                    e.target.value = '';
+                                  }
+                                }}
+                              />
+                            </label>
+                          </div>
                         </div>
 
-                        {/* Filtro de Visão por Empresa */}
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs font-bold text-slate-700">Visualizar Plano de:</span>
-                          <select
-                            value={empresaSelecionadaFiltro}
-                            onChange={e => setEmpresaSelecionadaFiltro(e.target.value)}
-                            className="px-3 py-1.5 bg-indigo-50 border border-indigo-300 rounded-xl text-xs font-bold text-indigo-950 focus:outline-none"
-                          >
-                            <option value="CONSOLIDADO">🌐 Todas as Contas (Matriz + Filiais)</option>
-                            {empresasLista.map(emp => (
-                              <option key={emp.id} value={emp.id}>
-                                {emp.tipo === 'MATRIZ' ? '🏛️ ' : '🏬 '}{emp.nome_fantasia || emp.razao_social} (Plano Efetivo)
-                              </option>
-                            ))}
-                          </select>
-                        </div>
+                        {resultadoEstrutura && (
+                          <div className="bg-emerald-950/70 border border-emerald-500/40 rounded-lg p-3 text-xs flex items-center justify-between text-emerald-200">
+                            <span>
+                              ✅ Importadas <strong>{resultadoEstrutura.total_contas_importadas}</strong> contas (<strong>{resultadoEstrutura.contas_dre_importadas} DRE</strong> e <strong>{resultadoEstrutura.contas_balanco_importadas} Balanço</strong>).
+                            </span>
+                            <button onClick={() => setResultadoEstrutura(null)} className="text-emerald-300 hover:text-white font-bold">✕</button>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* GRADE / PLANILHA CONTÁBIL DE ALTA DENSIDADE COM DIGITAÇÃO CONTÍNUA VIA TAB */}
+                    <div className="bg-white border border-slate-300 rounded-xl shadow-sm overflow-hidden">
+                      <div className="overflow-x-auto max-h-[680px] overflow-y-auto">
+                        <table className="w-full text-left text-xs border-collapse">
+                          {/* CABEÇALHO DA TABELA CONTÁBIL */}
+                          <thead className="bg-slate-200 text-slate-800 font-extrabold uppercase text-[11px] border-b-2 border-slate-300 sticky top-0 z-20 shadow-sm select-none">
+                            <tr>
+                              <th className="py-2 px-2 text-center w-12 border-r border-slate-300" title="Referência / Analítica">Ref.</th>
+                              <th className="py-2 px-3 w-40 border-r border-slate-300">Conta</th>
+                              <th className="py-2 px-3 w-28 border-r border-slate-300">Reduzido</th>
+                              <th className="py-2 px-3 border-r border-slate-300">Nome da Conta Contábil</th>
+                              <th className="py-2 px-2 w-24 text-center border-r border-slate-300">Demonstr.</th>
+                              <th className="py-2 px-3 w-48 border-r border-slate-300">Amarração Matriz</th>
+                              <th className="py-2 px-2 w-14 text-center">Ações</th>
+                            </tr>
+                          </thead>
+
+                          <tbody>
+                            {/* LINHA DE INSERÇÃO CONTÍNUA RÁPIDA (FIXADA NO TOPO - CADASTRO EM LOTE VIA TAB / ENTER) */}
+                            <tr className="bg-sky-50 border-b-2 border-indigo-400 sticky top-[33px] z-10 shadow-sm">
+                              {/* Coluna 1: Ref */}
+                              <td className="py-1.5 px-2 text-center border-r border-indigo-200">
+                                <span className={`inline-block font-black text-[11px] px-1.5 py-0.5 rounded ${
+                                  linhaRapidaRef === 'S'
+                                    ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                                    : 'bg-slate-100 text-slate-400'
+                                }`}>
+                                  {linhaRapidaRef || '-'}
+                                </span>
+                              </td>
+
+                              {/* Coluna 2: Conta (com foco automático e tecla TAB) */}
+                              <td className="py-1 px-2 border-r border-indigo-200">
+                                <input
+                                  ref={refInputConta}
+                                  type="text"
+                                  value={linhaRapidaConta}
+                                  onChange={e => setLinhaRapidaConta(e.target.value)}
+                                  onKeyDown={handleKeyDownConta}
+                                  placeholder="Ex: 1.1.1.01.001"
+                                  className="w-full px-2 py-1 font-mono text-xs font-bold bg-white border border-indigo-300 rounded focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-amber-50 text-indigo-950 placeholder-slate-400"
+                                />
+                              </td>
+
+                              {/* Coluna 3: Código Reduzido (auto-calculado com tecla TAB) */}
+                              <td className="py-1 px-2 border-r border-indigo-200">
+                                <input
+                                  ref={refInputReduzido}
+                                  type="text"
+                                  value={linhaRapidaReduzido}
+                                  onChange={e => setLinhaRapidaReduzido(e.target.value)}
+                                  onKeyDown={handleKeyDownReduzido}
+                                  placeholder="Auto"
+                                  className="w-full px-2 py-1 font-mono text-xs font-bold bg-white border border-indigo-300 rounded focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-900 placeholder-slate-400"
+                                />
+                              </td>
+
+                              {/* Coluna 4: Nome da Conta (ao pressionar TAB ou ENTER -> SALVA E PULA PARA NOVA LINHA!) */}
+                              <td className="py-1 px-2 border-r border-indigo-200">
+                                <div className="flex items-center gap-1.5">
+                                  <input
+                                    ref={refInputNome}
+                                    type="text"
+                                    value={linhaRapidaNome}
+                                    onChange={e => setLinhaRapidaNome(e.target.value)}
+                                    onKeyDown={handleKeyDownNome}
+                                    placeholder="Nome da Conta Contábil (Aperte TAB ou ENTER para salvar e pular)"
+                                    className="w-full px-2 py-1 text-xs font-semibold bg-white border border-indigo-300 rounded focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-amber-50 text-slate-900 placeholder-slate-400"
+                                  />
+                                  <span className="hidden xl:inline-block text-[10px] font-bold text-indigo-700 bg-indigo-100 px-2 py-0.5 rounded whitespace-nowrap">
+                                    TAB / Enter = Salva ➔ Pula
+                                  </span>
+                                </div>
+                              </td>
+
+                              {/* Coluna 5: Demonstração */}
+                              <td className="py-1 px-2 border-r border-indigo-200 text-center">
+                                <select
+                                  value={linhaRapidaDemonstracao}
+                                  onChange={e => {
+                                    const d = e.target.value;
+                                    setLinhaRapidaDemonstracao(d);
+                                    if (d === 'BALANCO') setLinhaRapidaDestino('ativo_circulante');
+                                    else setLinhaRapidaDestino('vendas_mercadorias');
+                                  }}
+                                  className="w-full px-1.5 py-1 bg-white border border-indigo-300 rounded text-[11px] font-bold text-slate-800 focus:outline-none"
+                                >
+                                  <option value="DRE">DRE</option>
+                                  <option value="BALANCO">BALANÇO</option>
+                                </select>
+                              </td>
+
+                              {/* Coluna 6: Amarração Destino */}
+                              <td className="py-1 px-2 border-r border-indigo-200">
+                                {linhaRapidaDemonstracao === 'BALANCO' ? (
+                                  <select
+                                    value={linhaRapidaDestino}
+                                    onChange={e => setLinhaRapidaDestino(e.target.value)}
+                                    className="w-full px-2 py-1 bg-white border border-indigo-300 rounded text-[11px] text-slate-800 focus:outline-none"
+                                  >
+                                    <option value="ativo_circulante">Ativo Circulante</option>
+                                    <option value="ativo_nao_circulante">Ativo Não Circulante</option>
+                                    <option value="passivo_circulante">Passivo Circulante</option>
+                                    <option value="passivo_nao_circulante">Passivo Não Circulante</option>
+                                    <option value="patrimonio_liquido">Patrimônio Líquido (PL)</option>
+                                  </select>
+                                ) : (
+                                  <select
+                                    value={linhaRapidaDestino}
+                                    onChange={e => setLinhaRapidaDestino(e.target.value)}
+                                    className="w-full px-2 py-1 bg-white border border-indigo-300 rounded text-[11px] text-slate-800 focus:outline-none"
+                                  >
+                                    <option value="vendas_mercadorias">1.01 Vendas de Mercadorias</option>
+                                    <option value="vendas_canceladas">2.01 (-) Vendas Canceladas</option>
+                                    <option value="imposto_incidente">2.02 (-) Imposto s/ Vendas</option>
+                                    <option value="icms_vendas">2.03 (-) ICMS s/ Vendas</option>
+                                    <option value="pis_vendas">2.04 (-) PIS s/ Vendas</option>
+                                    <option value="cofins_vendas">2.05 (-) COFINS s/ Vendas</option>
+                                    <option value="custo_mercadoria">4.01 (-) CMV / Custo Mercadoria</option>
+                                    <option value="salarios_ordenados">6.01 (-) Salários e Ordenados</option>
+                                    <option value="fgts">6.02 (-) FGTS</option>
+                                    <option value="inss">6.02 (-) INSS</option>
+                                    <option value="energia">6.07 (-) Energia Elétrica</option>
+                                    <option value="aluguel_predial">6.07 (-) Aluguel Predial</option>
+                                    <option value="honorarios_contabeis">6.10 (-) Honorários Contábeis</option>
+                                    <option value="tarifas_bancarias">6.11 (-) Tarifas Bancárias</option>
+                                    <option value="rendimento_aplicacao">8.01 (+) Rendimento Aplicação</option>
+                                    <option value="prov_irpj">10.01 (-) Provisão IRPJ</option>
+                                    <option value="prov_csll">10.02 (-) Provisão CSLL</option>
+                                  </select>
+                                )}
+                              </td>
+
+                              {/* Coluna 7: Botão Salvar Linha Rápida */}
+                              <td className="py-1 px-2 text-center">
+                                <button
+                                  type="button"
+                                  onClick={handleGravarLinhaRapida}
+                                  disabled={salvandoLinhaRapida || !linhaRapidaConta.trim() || !linhaRapidaNome.trim()}
+                                  className="w-full py-1 rounded bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs transition-all shadow-sm"
+                                  title="Salvar esta conta e abrir próxima linha"
+                                >
+                                  {salvandoLinhaRapida ? '...' : '➕'}
+                                </button>
+                              </td>
+                            </tr>
+
+                            {/* LISTAGEM DAS CONTAS CADASTRADAS COM DESTAQUES VISUAIS HIERÁRQUICOS */}
+                            {planoContasLista
+                              .filter(c => {
+                                if (empresaSelecionadaFiltro !== 'CONSOLIDADO') {
+                                  const empObj = empresasLista.find(e => e.id === empresaSelecionadaFiltro);
+                                  if (empObj && empObj.tipo === 'MATRIZ') {
+                                    if (c.escopo !== 'MATRIZ' && c.escopo !== empObj.id) return false;
+                                  } else if (empObj && empObj.tipo === 'FILIAL') {
+                                    if (c.escopo !== 'MATRIZ' && c.escopo !== empObj.id && !c.propagar_filiais) return false;
+                                  }
+                                }
+                                if (!buscaPlanoContas.trim()) return true;
+                                const termo = buscaPlanoContas.toLowerCase();
+                                return (
+                                  (c.codigo_contabil || '').toLowerCase().includes(termo) ||
+                                  (c.codigo_reduzido || '').toLowerCase().includes(termo) ||
+                                  (c.nome_conta || '').toLowerCase().includes(termo)
+                                );
+                              })
+                              .map((c, idx) => {
+                                // Determinação do nível hierárquico pela quantidade de partes separadas por ponto
+                                const partes = (c.codigo_contabil || '').split('.');
+                                const qtdNiveis = partes.length;
+                                const partesMascara = (mascaraPlano || '#.#.#.##.###').split('.').length;
+                                
+                                // Nível 1: Azul claro (Ex: 1 ATIVO, 2 PASSIVO)
+                                const ehNivel1 = qtdNiveis === 1 && c.codigo_contabil.length <= 2;
+
+                                // Nível 2 e 3: Amarelo suave/destacado (Ex: 1.1 CIRCULANTE, 1.1.1 DISPONÍVEL, 1.1.2 REALIZÁVEL)
+                                const ehNivel2ou3 = (qtdNiveis === 2 || qtdNiveis === 3) && !c.ref;
+
+                                // Analítica: Contas no nível folha
+                                const ehAnalitica = c.ref === 'S' || qtdNiveis >= partesMascara;
+
+                                // Classes de estilo por hierarquia
+                                let classeLinha = 'hover:bg-slate-100 transition-colors border-b border-slate-200';
+                                if (ehNivel1) {
+                                  classeLinha = 'bg-sky-100/90 hover:bg-sky-200/80 text-sky-950 font-black border-y border-sky-300';
+                                } else if (ehNivel2ou3) {
+                                  classeLinha = 'bg-yellow-200/90 hover:bg-yellow-300/80 text-yellow-950 font-bold border-y border-yellow-300';
+                                } else if (idx % 2 === 1) {
+                                  classeLinha = 'bg-slate-50/70 hover:bg-slate-100 transition-colors border-b border-slate-200';
+                                }
+
+                                return (
+                                  <tr key={c.id || idx} className={classeLinha}>
+                                    {/* Ref */}
+                                    <td className="py-1.5 px-2 text-center border-r border-slate-200">
+                                      {ehAnalitica ? (
+                                        <span className="font-black text-[11px] text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded border border-emerald-300">
+                                          S
+                                        </span>
+                                      ) : (
+                                        <span className="text-slate-400 text-[10px]">-</span>
+                                      )}
+                                    </td>
+
+                                    {/* Código Contábil */}
+                                    <td className="py-1.5 px-3 font-mono font-bold text-xs border-r border-slate-200">
+                                      <span className={ehNivel1 ? 'text-sky-950 font-black' : ehNivel2ou3 ? 'text-yellow-950 font-black' : 'text-slate-900'}>
+                                        {c.codigo_contabil}
+                                      </span>
+                                    </td>
+
+                                    {/* Reduzido */}
+                                    <td className="py-1.5 px-3 font-mono text-xs text-slate-700 border-r border-slate-200">
+                                      {c.codigo_reduzido || String(idx + 1).padStart(6, '0')}
+                                    </td>
+
+                                    {/* Nome da Conta */}
+                                    <td className="py-1.5 px-3 border-r border-slate-200">
+                                      <span className={`${ehNivel1 ? 'font-black tracking-wide text-sky-950' : ehNivel2ou3 ? 'font-bold uppercase text-yellow-950' : 'font-normal text-slate-900'}`}>
+                                        {c.nome_conta}
+                                      </span>
+                                    </td>
+
+                                    {/* Demonstração */}
+                                    <td className="py-1.5 px-2 text-center border-r border-slate-200">
+                                      <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                                        c.demonstracao === 'BALANCO'
+                                          ? 'bg-purple-100 text-purple-900 border border-purple-200'
+                                          : 'bg-cyan-100 text-cyan-900 border border-cyan-200'
+                                      }`}>
+                                        {c.demonstracao || 'DRE'}
+                                      </span>
+                                    </td>
+
+                                    {/* Amarração Matriz */}
+                                    <td className="py-1.5 px-3 border-r border-slate-200 font-mono text-[11px] text-slate-700 truncate max-w-[200px]" title={c.conta_destino_matriz_id}>
+                                      {c.conta_destino_matriz_id || '-'}
+                                    </td>
+
+                                    {/* Ações */}
+                                    <td className="py-1.5 px-2 text-center">
+                                      <button
+                                        type="button"
+                                        onClick={() => handleRemoverContaPlano(c.id)}
+                                        className="text-slate-400 hover:text-rose-600 transition-colors p-1"
+                                        title="Remover Conta"
+                                      >
+                                        🗑️
+                                      </button>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+
+                            {planoContasLista.length === 0 && (
+                              <tr>
+                                <td colSpan={7} className="py-8 text-center text-slate-500">
+                                  <div className="space-y-2">
+                                    <span className="text-3xl block">📑</span>
+                                    <p className="font-bold text-slate-700">Nenhuma conta cadastrada no Plano de Contas.</p>
+                                    <p className="text-xs text-slate-500">
+                                      Digite o código contábil na barra azul do topo e pressione <strong>TAB</strong> para cadastrar contas continuamente, ou clique em <strong>Importar Planilha/PDF</strong>.
+                                    </p>
+                                  </div>
+                                </td>
+                              </tr>
+                            )}
+                          </tbody>
+                        </table>
                       </div>
 
-                      {/* Formulário de Cadastro de Conta no Plano Multi-Empresas */}
-                      <form onSubmit={handleCadastrarContaPlano} className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-4">
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3">
-                          <div className="lg:col-span-1">
-                            <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                              Escopo / Empresa:
-                            </label>
-                            <select
-                              value={novaContaEscopo}
-                              onChange={e => setNovaContaEscopo(e.target.value)}
-                              className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-900 focus:outline-none focus:border-indigo-500"
-                            >
-                              <option value="MATRIZ">🏛️ MATRIZ (Vale p/ Filiais)</option>
-                              {empresasLista.filter(e => e.tipo === 'FILIAL').map(f => (
-                                <option key={f.id} value={f.id}>🏬 Só {f.nome_fantasia || f.razao_social}</option>
-                              ))}
-                            </select>
-                          </div>
-
-                          <div className="lg:col-span-1">
-                            <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                              Código Contábil:
-                            </label>
-                            <input
-                              type="text"
-                              required
-                              placeholder="Ex: 3.1.01.005"
-                              value={novaContaCodigo}
-                              onChange={e => setNovaContaCodigo(e.target.value)}
-                              className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-mono text-slate-900 focus:outline-none focus:border-indigo-500"
-                            />
-                          </div>
-
-                          <div className="lg:col-span-2">
-                            <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                              Nome / Descrição da Conta Contábil:
-                            </label>
-                            <input
-                              type="text"
-                              required
-                              placeholder="Ex: Receita de Vendas E-Commerce Matriz & Filiais"
-                              value={novaContaNome}
-                              onChange={e => setNovaEmpNome ? setNovaContaNome(e.target.value) : setNovaContaNome(e.target.value)}
-                              className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-indigo-500"
-                            />
-                          </div>
-
-                          <div className="lg:col-span-1">
-                            <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                              Demonstração:
-                            </label>
-                            <select
-                              value={novaContaDemonstracao}
-                              onChange={e => {
-                                const dem = e.target.value;
-                                setNovaContaDemonstracao(dem);
-                                if (dem === 'BALANCO') {
-                                  setNovaContaDestinoId('ativo_circulante');
-                                } else {
-                                  setNovaContaDestinoId('vendas_mercadorias');
-                                }
-                              }}
-                              className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-900 focus:outline-none focus:border-indigo-500"
-                            >
-                              <option value="DRE">📈 DRE (Resultado)</option>
-                              <option value="BALANCO">⚖️ Balanço Patrimonial</option>
-                            </select>
-                          </div>
-
-                          <div className="lg:col-span-1">
-                            <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                              Amarração Destino:
-                            </label>
-                            {novaContaDemonstracao === 'BALANCO' ? (
-                              <select
-                                value={novaContaDestinoId}
-                                onChange={e => setNovaContaDestinoId(e.target.value)}
-                                className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-indigo-500"
-                              >
-                                <option value="ativo_circulante">Ativo Circulante</option>
-                                <option value="ativo_nao_circulante">Ativo Não Circulante</option>
-                                <option value="passivo_circulante">Passivo Circulante</option>
-                                <option value="passivo_nao_circulante">Passivo Não Circulante</option>
-                                <option value="patrimonio_liquido">Patrimônio Líquido (PL)</option>
-                              </select>
-                            ) : (
-                              <select
-                                value={novaContaDestinoId}
-                                onChange={e => setNovaContaDestinoId(e.target.value)}
-                                className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-indigo-500"
-                              >
-                                <option value="vendas_mercadorias">1.01 Vendas de Mercadorias</option>
-                                <option value="vendas_canceladas">2.01 (-) Vendas Canceladas</option>
-                                <option value="imposto_incidente">2.02 (-) Imposto s/ Vendas</option>
-                                <option value="icms_vendas">2.03 (-) ICMS s/ Vendas</option>
-                                <option value="pis_vendas">2.04 (-) PIS s/ Vendas</option>
-                                <option value="cofins_vendas">2.05 (-) COFINS s/ Vendas</option>
-                                <option value="custo_mercadoria">4.01 (-) CMV / Custo Mercadoria</option>
-                                <option value="salarios_ordenados">6.01 (-) Salários e Ordenados</option>
-                                <option value="fgts">6.02 (-) FGTS</option>
-                                <option value="inss">6.02 (-) INSS</option>
-                                <option value="energia">6.07 (-) Energia Elétrica</option>
-                                <option value="aluguel_predial">6.07 (-) Aluguel Predial</option>
-                                <option value="honorarios_contabeis">6.10 (-) Honorários Contábeis</option>
-                                <option value="tarifas_bancarias">6.11 (-) Tarifas Bancárias</option>
-                                <option value="rendimento_aplicacao">8.01 (+) Rendimento Aplicação</option>
-                                <option value="prov_irpj">10.01 (-) Provisão IRPJ</option>
-                                <option value="prov_csll">10.02 (-) Provisão CSLL</option>
-                              </select>
-                            )}
-                          </div>
-                        </div>
-
-                        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pt-1">
-                          <div className="flex items-center gap-2 text-xs text-slate-700">
-                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-100 text-emerald-900 font-bold text-[11px]">
-                              🔗 Propagação Automática Ativa:
-                            </span>
-                            <span className="text-[11px] text-slate-600">
-                              Contas cadastradas na <strong>Matriz</strong> surtem efeito imediato na Matriz e em todas as Filiais.
-                            </span>
-                          </div>
-
-                          <button
-                            type="submit"
-                            className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white text-xs font-black shadow-md shadow-emerald-500/20 transition-all cursor-pointer shrink-0"
-                          >
-                            + Cadastrar Conta no Plano & Propagar para Filiais
-                          </button>
-                        </div>
-                      </form>
-
-                      {/* Tabela do Plano de Contas Efetivo */}
-                      <div className="space-y-3">
-                        <div className="flex flex-col sm:flex-row justify-between items-center gap-3">
-                          <input
-                            type="text"
-                            placeholder="Filtrar por código ou nome da conta..."
-                            value={buscaPlanoContas}
-                            onChange={e => setBuscaPlanoContas(e.target.value)}
-                            className="w-full sm:w-80 px-3.5 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-indigo-500"
-                          />
-                          <span className="text-[11px] font-bold text-slate-500">
-                            Exibindo contas ativas com amarração contábil verificada pelo Auditor Goldfish
+                      {/* RODAPÉ CONTÁBIL COM CONTAGEM E STATUS DA MÁSCARA */}
+                      <div className="bg-slate-100 border-t border-slate-300 px-4 py-2 text-xs font-bold text-slate-700 flex flex-wrap items-center justify-between gap-2 select-none">
+                        <div className="flex items-center gap-3">
+                          <span>
+                            📊 <strong>{planoContasLista.length}</strong> contas cadastradas
+                          </span>
+                          <span className="text-slate-400">|</span>
+                          <span className="text-emerald-700">
+                            • <strong>{planoContasLista.filter(c => c.ref === 'S' || (c.codigo_contabil || '').split('.').length >= (mascaraPlano || '#.#.#.##.###').split('.').length).length}</strong> Analíticas (Ref. S)
+                          </span>
+                          <span className="text-slate-400">|</span>
+                          <span className="text-amber-700">
+                            • <strong>{planoContasLista.filter(c => !(c.ref === 'S' || (c.codigo_contabil || '').split('.').length >= (mascaraPlano || '#.#.#.##.###').split('.').length)).length}</strong> Sintéticas
                           </span>
                         </div>
 
-                        <div className="overflow-x-auto border border-slate-200 rounded-xl">
-                          <table className="w-full text-left text-xs">
-                            <thead className="bg-slate-100 text-slate-700 font-bold uppercase text-[11px] border-b border-slate-200">
-                              <tr>
-                                <th className="py-3 px-4">Código</th>
-                                <th className="py-3 px-4 min-w-[220px]">Nome da Conta Contábil</th>
-                                <th className="py-3 px-4">Demonstração</th>
-                                <th className="py-3 px-4">Amarração na Matriz / Balanço</th>
-                                <th className="py-3 px-4">Abrangência (Matriz / Filiais)</th>
-                                <th className="py-3 px-4 text-center">Ações</th>
-                              </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-200">
-                              {planoContasLista
-                                .filter(c => {
-                                  if (empresaSelecionadaFiltro !== 'CONSOLIDADO') {
-                                    const empObj = empresasLista.find(e => e.id === empresaSelecionadaFiltro);
-                                    if (empObj && empObj.tipo === 'MATRIZ') {
-                                      if (c.escopo !== 'MATRIZ' && c.escopo !== empObj.id) return false;
-                                    } else if (empObj && empObj.tipo === 'FILIAL') {
-                                      if (c.escopo !== 'MATRIZ' && c.escopo !== empObj.id && !c.propagar_filiais) return false;
-                                    }
-                                  }
-                                  if (!buscaPlanoContas.trim()) return true;
-                                  const termo = buscaPlanoContas.toLowerCase();
-                                  return (
-                                    (c.codigo_contabil || '').toLowerCase().includes(termo) ||
-                                    (c.nome_conta || '').toLowerCase().includes(termo)
-                                  );
-                                })
-                                .map((c) => {
-                                  const ehGlobalMatriz = c.escopo === 'MATRIZ' || c.propagar_filiais;
-                                  return (
-                                    <tr key={c.id} className="hover:bg-slate-50 transition-colors">
-                                      <td className="py-2.5 px-4 font-mono font-bold text-indigo-900">
-                                        {c.codigo_contabil}
-                                      </td>
-                                      <td className="py-2.5 px-4 font-bold text-slate-900">
-                                        {c.nome_conta}
-                                      </td>
-                                      <td className="py-2.5 px-4">
-                                        <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${
-                                          c.demonstracao === 'BALANCO'
-                                            ? 'bg-purple-100 text-purple-900 border border-purple-300'
-                                            : 'bg-cyan-100 text-cyan-900 border border-cyan-300'
-                                        }`}>
-                                          {c.demonstracao}
-                                        </span>
-                                      </td>
-                                      <td className="py-2.5 px-4 font-mono text-[11px] text-amber-900">
-                                        <span className="px-2.5 py-1 rounded-lg bg-amber-50 border border-amber-300 font-semibold">
-                                          {c.conta_destino_matriz_id}
-                                        </span>
-                                      </td>
-                                      <td className="py-2.5 px-4">
-                                        {ehGlobalMatriz ? (
-                                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-900 border border-emerald-300">
-                                            🏛️ Matriz ➔ Efeito em Todas as Filiais
-                                          </span>
-                                        ) : (
-                                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-300">
-                                            🏬 Específica da Filial ({c.escopo})
-                                          </span>
-                                        )}
-                                      </td>
-                                      <td className="py-2.5 px-4 text-center">
-                                        <button
-                                          onClick={() => handleRemoverContaPlano(c.id)}
-                                          className="px-2.5 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-semibold transition-all cursor-pointer"
-                                          title="Remover Conta"
-                                        >
-                                          🗑️
-                                        </button>
-                                      </td>
-                                    </tr>
-                                  );
-                                })}
-                            </tbody>
-                          </table>
+                        <div className="flex items-center gap-2 text-[11px] text-slate-500">
+                          <span>Máscara Contábil Ativa: <strong className="font-mono text-indigo-700">{mascaraPlano}</strong></span>
+                          <span>•</span>
+                          <span>Atalho: Digite a Conta ➔ <strong>TAB</strong> ➔ <strong>TAB</strong> ➔ Nome ➔ <strong>Enter</strong></span>
                         </div>
                       </div>
                     </div>

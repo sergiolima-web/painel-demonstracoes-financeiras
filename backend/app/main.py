@@ -646,6 +646,8 @@ class EmpresaCreateRequest(BaseModel):
 class ContaPlanoCreateRequest(BaseModel):
     codigo_contabil: str
     nome_conta: str
+    codigo_reduzido: Optional[str] = ""
+    ref: Optional[str] = ""
     demonstracao: Optional[str] = "DRE"
     tipo_demonstracao: Optional[str] = "DRE"  # "DRE" ou "BALANCO"
     natureza: Optional[str] = "CREDORA"
@@ -657,21 +659,38 @@ class ContaPlanoCreateRequest(BaseModel):
     empresa_id: Optional[str] = "MATRIZ_GLOBAL"
     propagar_filiais: bool = True
 
+class MascaraPlanoRequest(BaseModel):
+    mascara: str
+
 @app.get("/api/empresas-plano")
 def listar_empresas_e_plano_contas(empresa_id: Optional[str] = None):
     """
-    Retorna todas as empresas cadastradas (Matriz e Filiais), o Plano de Contas unificado
-    e o status de prontidão para importação de demonstrações financeiras.
+    Retorna todas as empresas cadastradas (Matriz e Filiais), o Plano de Contas unificado,
+    a máscara de classificação contábil e o status de prontidão para importação.
     """
     contas_efetivas = empresas_plano_service.obter_plano_contas_efetivo_empresa(empresa_id)
     return {
         "empresas": empresas_plano_service.listar_empresas(),
         "plano_contas": contas_efetivas,
+        "mascara_plano": empresas_plano_service.obter_mascara(),
         "prontidao_importacao": empresas_plano_service.verificar_prontidao_importacao(),
         "plano_efetivo_empresa": {
             "empresa_id": empresa_id or "CONSOLIDADO",
             "contas_efetivas": contas_efetivas
         }
+    }
+
+@app.post("/api/plano-contas/mascara")
+def atualizar_mascara_plano_endpoint(req: MascaraPlanoRequest):
+    """
+    Atualiza a máscara de classificação do Plano de Contas (ex: #.#.#.##.###).
+    """
+    mascara = empresas_plano_service.atualizar_mascara(req.mascara)
+    return {
+        "status": "sucesso",
+        "mensagem": f"Máscara do Plano de Contas atualizada para '{mascara}'!",
+        "mascara_plano": mascara,
+        "mascara_ativa": mascara
     }
 
 @app.post("/api/empresas")
@@ -729,7 +748,9 @@ def cadastrar_conta_plano_endpoint(req: ContaPlanoCreateRequest):
         empresa_id=req.empresa_id or "MATRIZ_GLOBAL",
         propagar_filiais=req.propagar_filiais,
         escopo=escopo_escolhido,
-        demonstracao=dem_escolhida
+        demonstracao=dem_escolhida,
+        codigo_reduzido=req.codigo_reduzido or "",
+        ref=req.ref or ""
     )
 
     # Se houver documento ativo carregado, re-conglutina imediatamente para surtir efeito na hora!

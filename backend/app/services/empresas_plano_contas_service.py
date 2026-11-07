@@ -27,6 +27,7 @@ class EmpresasPlanoContasService:
 
     def _estrutura_inicial(self) -> Dict[str, Any]:
         return {
+            "mascara_plano": "#.#.#.##.###",
             "empresas": [
                 {
                     "id": "emp_matriz_01",
@@ -233,6 +234,17 @@ class EmpresasPlanoContasService:
 
             return contas_efetivas
 
+    def obter_mascara(self) -> str:
+        with self._lock:
+            return self.estado.get("mascara_plano", "#.#.#.##.###")
+
+    def atualizar_mascara(self, nova_mascara: str) -> str:
+        with self._lock:
+            masc = (nova_mascara or "#.#.#.##.###").strip()
+            self.estado["mascara_plano"] = masc
+            self._salvar_banco()
+            return masc
+
     def cadastrar_conta_plano(
         self,
         codigo_contabil: str,
@@ -244,7 +256,9 @@ class EmpresasPlanoContasService:
         empresa_id: str = "MATRIZ_GLOBAL",
         propagar_filiais: bool = True,
         escopo: str = "MATRIZ",
-        demonstracao: str = ""
+        demonstracao: str = "",
+        codigo_reduzido: str = "",
+        ref: str = ""
     ) -> Dict[str, Any]:
         """
         Cadastra uma conta no Plano de Contas.
@@ -268,9 +282,21 @@ class EmpresasPlanoContasService:
             else:
                 escopo_label = "Corporativo Global (Matriz + Todas as Filiais)"
 
+            # Determina o código reduzido sequencial automático caso não fornecido
+            plano_atual = self.estado.get("plano_contas", [])
+            cod_red = codigo_reduzido.strip() if codigo_reduzido else f"{len(plano_atual) + 1:06d}"
+
+            # Determina Ref ('S' para analítica, vazio para grupo sintético)
+            mascara = self.obter_mascara()
+            partes_mascara = len(mascara.split("."))
+            partes_conta = len(codigo_contabil.strip().split("."))
+            ref_final = ref.strip().upper() if ref else ("S" if partes_conta >= partes_mascara else "")
+
             nova_conta = {
                 "id": f"conta_{uuid.uuid4().hex[:8]}",
                 "codigo_contabil": codigo_contabil.strip(),
+                "codigo_reduzido": cod_red,
+                "ref": ref_final,
                 "nome_conta": nome_conta.strip(),
                 "demonstracao": dem_final,
                 "tipo_demonstracao": dem_final,
