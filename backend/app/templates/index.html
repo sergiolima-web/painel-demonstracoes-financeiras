@@ -1448,7 +1448,7 @@
                     <span className="px-1.5 py-0.5 rounded text-[10px] bg-slate-200 text-slate-800 font-bold font-mono">F5</span>
                   </button>
 
-                  {/* Botão Primário: Importar Arquivo */}
+                  {/* Botão Primário: Importar Arquivo (COM TRAVA ESTRITA CONTRA IMPORTAÇÃO SEM PLANO DE CONTAS) */}
                   <input
                     type="file"
                     ref={fileInputRef}
@@ -1458,11 +1458,19 @@
                   />
                   <div className="relative">
                     <button
-                      onClick={() => fileInputRef.current && fileInputRef.current.click()}
+                      onClick={() => {
+                        if (planoContasLista.length === 0) {
+                          alert("🚫 IMPORTAÇÃO DE BALANÇO E DRE BLOQUEADA!\n\nConforme a regra de governança contábil, é terminantemente proibido importar Balanço Patrimonial ou DRE sem que o Plano de Contas esteja previamente cadastrado.\n\nVocê será redirecionado para a aba '📑 Plano de Contas' para cadastrar primeiro as contas da sua empresa.");
+                          setActiveTab('plano_contas');
+                          return;
+                        }
+                        if (fileInputRef.current) fileInputRef.current.click();
+                      }}
                       disabled={isLoading}
                       className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-gradient-to-r from-amber-500 via-yellow-500 to-amber-600 hover:brightness-105 active:scale-95 text-slate-950 text-xs font-bold shadow-md shadow-amber-500/20 border border-amber-400/80 transition-all cursor-pointer shrink-0"
+                      title={planoContasLista.length === 0 ? "Importação bloqueada: Cadastre primeiro o Plano de Contas na aba '📑 Plano de Contas'" : "Importar balancete ou movimentações contábeis"}
                     >
-                      <span>📁</span>
+                      <span>{planoContasLista.length === 0 ? '🔒' : '📁'}</span>
                       <span>{isLoading ? 'Processando...' : 'Importar Arquivo'}</span>
                     </button>
 
@@ -3660,10 +3668,20 @@
                         <button
                           type="button"
                           onClick={handleConfirmarImportacao}
-                          className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 via-yellow-500 to-amber-600 hover:brightness-105 active:scale-95 text-slate-950 text-xs font-black shadow-lg shadow-amber-500/25 border border-amber-400 transition-all flex items-center gap-2 cursor-pointer"
+                          disabled={!prontidaoImportacao?.liberado || planoContasLista.length === 0}
+                          className={`px-5 py-2.5 rounded-xl text-xs font-black transition-all flex items-center gap-2 ${
+                            prontidaoImportacao?.liberado && planoContasLista.length > 0
+                              ? 'bg-gradient-to-r from-amber-500 via-yellow-500 to-amber-600 hover:brightness-105 active:scale-95 text-slate-950 shadow-lg shadow-amber-500/25 border border-amber-400 cursor-pointer'
+                              : 'bg-rose-100 text-rose-800 border-2 border-rose-300 opacity-90 cursor-not-allowed'
+                          }`}
+                          title={!prontidaoImportacao?.liberado || planoContasLista.length === 0 ? "Bloqueado: É obrigatório cadastrar o Plano de Contas primeiro" : "Confirmar importação de dados"}
                         >
-                          <span>🚀</span>
-                          <span>Confirmar e Importar Planilha</span>
+                          <span>{prontidaoImportacao?.liberado && planoContasLista.length > 0 ? '🚀' : '🔒'}</span>
+                          <span>
+                            {prontidaoImportacao?.liberado && planoContasLista.length > 0
+                              ? 'Confirmar e Importar Planilha'
+                              : 'Importação Bloqueada: Cadastre o Plano de Contas Primeiro'}
+                          </span>
                         </button>
                       </div>
 

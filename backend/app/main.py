@@ -495,11 +495,12 @@ async def upload_demonstracao(
                 status_code=400,
                 content={
                     "erro": True,
+                    "bloqueado": True,
                     "bloqueio_cadastro": True,
                     "prontidao_importacao": prontidao,
                     "mensagem": prontidao.get(
                         "motivo",
-                        "Importação bloqueada: Cadastre ou importe primeiro a estrutura do Plano de Contas e da DRE na aba '🏛️ Matriz, Filiais & Plano de Contas'."
+                        "🚫 Importação Bloqueada: Não é permitido importar Balanço ou DRE sem que o Plano de Contas esteja previamente cadastrado! Acesse a aba '📑 Plano de Contas'."
                     ),
                     "detalhe": "Plano de Contas ou DRE não cadastrado"
                 }
@@ -540,6 +541,27 @@ async def upload_demonstracao(
                     "erro": True,
                     "mensagem": "O arquivo enviado excede o limite máximo permitido de 25 MB.",
                     "detalhe": "Payload Too Large"
+                }
+            )
+
+        # ---------------------------------------------------------------------------------
+        # REGRA DE GOVERNANÇA CONTÁBIL ZERO TRUST:
+        # É TERMINANTEMENTE PROIBIDO IMPORTAR BALANÇO E DRE SE NÃO EXISTIR UM PLANO DE CONTAS CADASTRADO!
+        # ---------------------------------------------------------------------------------
+        prontidao = empresas_plano_service.verificar_prontidao_importacao()
+        if not prontidao.get("liberado"):
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "erro": True,
+                    "bloqueado": True,
+                    "mensagem": (
+                        "🚫 Importação Bloqueada: Não é permitido importar Balanço ou DRE sem que o "
+                        "Plano de Contas corporativo esteja previamente cadastrado! "
+                        "Acesse a aba '📑 Plano de Contas' para cadastrar ou importar a estrutura de contas primeiro."
+                    ),
+                    "detalhe": prontidao.get("motivo"),
+                    "prontidao_importacao": prontidao
                 }
             )
 

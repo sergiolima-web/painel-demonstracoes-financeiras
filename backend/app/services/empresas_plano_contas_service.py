@@ -358,8 +358,8 @@ class EmpresasPlanoContasService:
                 motivo = f"Cadastro validado: {len(plano)} conta(s) ativa(s) no Plano de Contas ({len(contas_dre)} DRE / {len(contas_balanco)} Balanço)."
             else:
                 motivo = (
-                    "Importação de saldos bloqueada: O Plano de Contas e a Estrutura da DRE ainda não estão cadastrados! "
-                    "Acesse a aba '🏛️ Matriz, Filiais & Plano de Contas' e importe ou cadastre primeiro as contas da sua empresa."
+                    "🚫 Importação de Balanço e DRE Bloqueada: Não é permitido importar demonstrações com valores sem que o "
+                    "Plano de Contas corporativo esteja previamente cadastrado! Acesse a aba '📑 Plano de Contas' para cadastrar primeiro a estrutura."
                 )
             return {
                 "liberado": liberado,
